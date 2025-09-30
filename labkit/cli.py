@@ -38,27 +38,40 @@ def main():
     # labkit node add
     node_p = subparsers.add_parser("node", help="Manage nodes")
     node_sub = node_p.add_subparsers(dest="action", required=True)
-    add_p = node_sub.add_parser("add", help="Add a new node")
-    add_p.add_argument("name", help="Node/container name")
-    add_p.add_argument("--template", help="Use specific template (overrides lab.yaml)")
+    add_node_p = node_sub.add_parser("add", help="Add a new node")
+    add_node_p.add_argument("name", help="Node/container name")
+    add_node_p.add_argument("--template", help="Use specific template (overrides lab.yaml)")
 
-    rm_p = node_sub.add_parser("rm", help="Remove a node")
-    rm_p.add_argument("name", help="Node/container name")
-    rm_p.add_argument("--force", action="store_true", help="Stop and delete if running")
+    rm_node_p = node_sub.add_parser("rm", help="Remove a node")
+    rm_node_p.add_argument("name", help="Node/container name")
+    rm_node_p.add_argument("--force", action="store_true", help="Stop and delete if running")
 
     # labkit requires
     req_p = subparsers.add_parser("requires", help="Manage external node dependencies")
     req_sub = req_p.add_subparsers(dest="req_action", required=True)
 
-    add_p = req_sub.add_parser("add", help="Declare that this lab requires a shared node")
-    add_p.add_argument("names", nargs="+", help="Node names to require")
+    req_add_p = req_sub.add_parser("add", help="Declare that this lab requires a shared node")
+    req_add_p.add_argument("names", nargs="+", help="Node names to require")
 
-    rm_p = req_sub.add_parser("remove", help="Remove requirement for a shared node")
-    rm_p.add_argument("names", nargs="+", help="Node names to unrequire")
+    req_rm_p = req_sub.add_parser("remove", help="Remove requirement for a shared node")
+    req_rm_p.add_argument("names", nargs="+", help="Node names to unrequire")
 
     list_p = req_sub.add_parser("list", help="List all required external nodes")
     req_sub.add_parser("check", help="Check if all required nodes are running")
-    
+
+    # labkit up
+    up_p = subparsers.add_parser("up", help="Start all managed nodes within the lab")
+
+    # labkit down
+    down_p = subparsers.add_parser("down", help="Stop all managed nodes within the lab")
+
+    # In parser setup
+    for subparser in [up_p, down_p, add_node_p, rm_node_p, req_add_p, req_rm_p]:
+        subparser.add_argument(
+            "--dry-run", "-n",
+            action="store_true",
+            help="Show what would be done without applying changes"
+        )    
 
     args = parser.parse_args()
     if args.command == "new":
@@ -71,6 +84,10 @@ def main():
         cmd_node(args)
     elif args.command == "requires":
         cmd_requires(args)
+    elif args.command == "up":
+        cmd_up(args)
+    elif args.command == "down":
+        cmd_down(args)
     elif args.command == "template":
         if args.action == "list":
             list_templates()
@@ -111,7 +128,7 @@ def cmd_init(args):
     lab = Lab.init(current_dir)
     lab.config["name"] = lab_name
     if hasattr(args, "template") and args.template:
-        if not lab._container_exists(args.template):
+        if not container_exists(args.template):
             warning(f"Template '{args.template}' not found. You may need to create it.")
         lab.config["template"] = args.template
 
@@ -139,9 +156,9 @@ def cmd_node(args):
         return
 
     if args.action == "add":
-        lab.add_node(args.name, template=args.template)
+        lab.add_node(args.name, template=args.template, dry_run=args.dry_run)
     elif args.action == "rm":
-        lab.remove_node(args.name, force=args.force)
+        lab.remove_node(args.name, force=args.force, dry_run=args.dry_run)
 
 def cmd_list(args):
     import os
@@ -260,10 +277,10 @@ def cmd_requires(args):
         return
 
     if args.req_action == "add":
-        lab.add_requirement(args.names)
+        lab.add_requirement(args.names, args.dry_run)
 
     elif args.req_action == "remove":
-        lab.remove_requirement(args.names)
+        lab.remove_requirement(args.names, args.dry_run)
 
     elif args.req_action == "list":
         requires = lab.config.get("requires_nodes", [])
@@ -308,4 +325,30 @@ def cmd_requires(args):
             success("✅ All required nodes are running")
         return
 
-        
+def cmd_up(args):
+    current_dir = Path.cwd()
+    if not (current_dir / "lab.yaml").exists():
+        print("❌ This is not a lab directory. Run 'labkit init' first.")
+        return
+
+    try:
+        lab = Lab(current_dir)
+    except Exception as e:
+        print(f"💥 Failed to load lab: {e}")
+        return
+
+    lab.up(dry_run=args.dry_run)
+
+def cmd_down(args):
+    current_dir = Path.cwd()
+    if not (current_dir / "lab.yaml").exists():
+        print("❌ This is not a lab directory. Run 'labkit init' first.")
+        return
+
+    try:
+        lab = Lab(current_dir)
+    except Exception as e:
+        print(f"💥 Failed to load lab: {e}")
+        return
+
+    lab.down(dry_run=args.dry_run)

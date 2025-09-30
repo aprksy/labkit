@@ -14,6 +14,53 @@ class Lab:
         self.config = LabConfig(self.config_path).load()
         self.nodes_dir = self.root / "nodes"
         self.shared_dir = self.root / "shared"
+        self.dry_run = False
+
+    def _describe_and_apply(self, actions, dry_run=False):
+        """Show all planned actions, then execute if not dry_run."""
+        from .utils import info, success
+
+        if not actions:
+            info("✅ Nothing to do.")
+            return
+
+        info("📋 Planned actions:")
+        for act in actions:
+            print(f"  {act['desc']}")
+
+        if dry_run:
+            info("🧪 DRY RUN: No changes applied")
+            return
+
+        # Apply
+        for act in actions:
+            try:
+                act['func'](*act.get('args', ''), **act.get('kwargs', {}))
+            except Exception as e:
+                from .utils import error
+                error(f"💥 Failed to execute: {act['desc']} → {e}")
+                raise
+
+        success("✅ All actions completed")
+
+    def _log_event(self, action: str, **details):
+        from datetime import datetime
+        import getpass
+        log_dir = self.root / "logs"
+        log_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        log_file = log_dir / f"{timestamp}-{action}.txt"
+
+        data = {
+            "action": action,
+            "user": getpass.getuser(),
+            "timestamp": timestamp,
+            "lab": self.config["name"],
+            **details
+        }
+
+        lines = [f"{k.upper()}: {v}" for k, v in data.items()]
+        log_file.write_text("\n".join(lines) + "\n")
 
     @classmethod
     def init(cls, path: Path):
@@ -38,246 +85,406 @@ class Lab:
         info("Next: labkit node add <name>")
         return lab
 
-    def add_node(self, name: str, template: str):
-        """Add a new node (container) to the lab"""
-        ensure_incus_running()
+    def add_requirement(self, node_names, dry_run=False):
+        from .utils import info, warning
 
-        # Use override or fallback to config
+        lab_name = self.config["name"]
+        requires = set(self.config.get("requires_nodes", []))
+
+        actions = []
+        needs_save = False  # ← Track if we need to save lab.yaml
+
+        for name in node_names:
+            if not container_exists(name):
+                warning(f"Container '{name}' does not exist")
+                continue
+
+            if name not in requires:
+                requires.add(name)
+                needs_save = True  # ← Mark for save later
+
+                def update_required_by(container_name):
+                    result = run(
+                        ["incus", "config", "get", container_name, "user.required_by"],
+                        silent=True, check=False
+                    )
+                    current = set()
+                    if result.returncode == 0 and result.stdout.strip():
+                        current = set(result.stdout.strip().split(","))
+                    if lab_name not in current:
+                        current.add(lab_name)
+                        new_val = ",".join(sorted(current))
+                        run([
+                            "incus", "config", "set", container_name,
+                            f"user.required_by={new_val}"
+                        ], check=True)
+
+                actions.append({
+                    "desc": f"🔗 Add '{lab_name}' to {name}.user.required_by",
+                    "func": update_required_by,
+                    "args": (name,)
+                })
+
+        # Save config if any new requirements were added
+        if needs_save:
+            def save_lab_config():
+                self.config["requires_nodes"] = sorted(requires)
+                self.save_config()
+
+            actions.append({
+                "desc": "💾 Save updated lab.yaml",
+                "func": save_lab_config,
+            })
+
+        self._describe_and_apply(actions, dry_run)
+
+    def remove_requirement(self, node_names, dry_run=False):
+        from .utils import info, warning
+
+        lab_name = self.config["name"]
+        requires = set(self.config.get("requires_nodes", []))
+        original_count = len(requires)
+
+        actions = []
+        needs_save = False  # ← Will set to True if we remove anything
+
+        for name in node_names:
+            if name in requires:
+                requires.discard(name)
+                needs_save = True  # ← Mark for save
+
+                def update_on_node(container_name):
+                    result = run(
+                        ["incus", "config", "get", container_name, "user.required_by"],
+                        silent=True, check=False
+                    )
+                    if result.returncode != 0:
+                        return
+                    current = set(result.stdout.strip().split(",")) if result.stdout.strip() else set()
+                    if lab_name in current:
+                        current.remove(lab_name)
+                        if current:
+                            new_val = ",".join(sorted(current))
+                            run([
+                                "incus", "config", "set", container_name,
+                                f"user.required_by={new_val}"
+                            ], check=True)
+                        else:
+                            run(["incus", "config", "unset", container_name, "user.required_by"], check=True)
+
+                actions.append({
+                    "desc": f"🔗 Remove '{lab_name}' from {name}.user.required_by",
+                    "func": update_on_node,
+                    "args": (name,)
+                })
+
+        # Save config only if we removed something
+        if needs_save and len(requires) != original_count:
+            def save_lab_config():
+                self.config["requires_nodes"] = sorted(requires)
+                self.save_config()
+
+            actions.append({
+                "desc": "💾 Save updated lab.yaml",
+                "func": save_lab_config
+            })
+
+        self._describe_and_apply(actions, dry_run)
+
+    def up(self, dry_run=False):
+        from .utils import info, success, run
+
+        # Get all containers
+        result = run(["incus", "list", "--format=json"], silent=True)
+        containers = json.loads(result.stdout)
+        running_names = {c["name"] for c in containers if c["status"] == "Running"}
+
+        local_nodes = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
+        required_nodes = self.config.get("requires_nodes", [])
+
+        actions = []
+
+        # Start required nodes first
+        for name in required_nodes:
+            if name not in running_names:
+                actions.append({
+                    "desc": f"🚀 Start required node: {name}",
+                    "func": run,
+                    "args": (["incus", "start", name],),
+                    "kwargs": {"check": True}
+                })
+
+        # Start local nodes
+        for name in local_nodes:
+            if name not in running_names:
+                actions.append({
+                    "desc": f"📦 Start local node: {name}",
+                    "func": run,
+                    "args": (["incus", "start", name],),
+                    "kwargs": {"check": True}
+                })
+
+        # Log event
+        def log_up():
+            self._log_event("up", nodes_started=[a["desc"].split(": ")[-1] for a in actions if a["func"] == run])
+
+        if actions:
+            actions.append({
+                "desc": "📄 Log up event",
+                "func": log_up
+            })
+
+        self._describe_and_apply(actions, dry_run)
+
+    def down(self, suspend_required=False, force_stop_all=False, dry_run=False):
+        from .utils import info, run
+
+        result = run(["incus", "list", "--format=json"], silent=True)
+        containers = json.loads(result.stdout)
+        running_names = {c["name"] for c in containers if c["status"] == "Running"}
+
+        local_nodes = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
+        required_nodes = self.config.get("requires_nodes", [])
+
+        actions = []
+
+        # Always stop local nodes if running
+        for name in local_nodes:
+            if name in running_names:
+                actions.append({
+                    "desc": f"🛑 Stop local node: {name}",
+                    "func": run,
+                    "args": (["incus", "stop", name],),
+                    "kwargs": {"check": True}
+                })
+
+        # Handle required nodes
+        if suspend_required or force_stop_all:
+            for name in required_nodes:
+                if name in running_names:
+                    # Check if pinned
+                    pin_result = run(
+                        ["incus", "config", "get", name, "user.pinned"],
+                        silent=True, check=False
+                    )
+                    if pin_result.returncode == 0 and pin_result.stdout.strip() == "true":
+                        if not force_stop_all:
+                            info(f"📌 Skipping {name}: user.pinned=true")
+                            continue
+
+                    # Refcount check: only stop if no other active lab uses it
+                    if not force_stop_all:
+                        used_by = run(
+                            ["incus", "config", "get", name, "user.required_by"],
+                            silent=True, check=False
+                        )
+                        if used_by.returncode == 0 and used_by.stdout.strip():
+                            labs = used_by.stdout.strip().split(",")
+                            # Simulate: which labs are currently active?
+                            # For now, assume we trust user intent with --suspend-required
+                            pass  # Future: query other labs' state
+
+                    actions.append({
+                        "desc": f"⛓️ Suspend required node: {name}",
+                        "func": run,
+                        "args": (["incus", "stop", name],),
+                        "kwargs": {"check": True}
+                    })
+
+        # Log event
+        def log_down():
+            self._log_event("down", nodes_stopped=[a["desc"].split(": ")[-1] for a in actions])
+
+        if actions:
+            actions.append({
+                "desc": "📄 Log down event",
+                "func": log_down
+            })
+
+        self._describe_and_apply(actions, dry_run)
+
+    def add_node(self, name: str, template: str = None, dry_run: bool = False):
+        from .utils import info, warning
+
+        # Resolve template
         effective_template = template or self.config["template"]
 
+        # Validate upfront
         if not container_exists(effective_template):
-            error(f"Template container '{effective_template}' not found!")
-            return
-        
+            raise RuntimeError(f"Template '{effective_template}' not found")
         if container_exists(name):
-            error(f"Container '{name}' already exists!")
-            return
+            raise RuntimeError(f"Container '{name}' already exists")
 
-        # Validate name
-        if not name.replace("-", "").isalnum() or not name[0].islower():
-            error("Invalid name: use lowercase letters, numbers, hyphens only")
-            return
-
-        # Check if exists
-        if get_container_state(name):
-            error(f"Container '{name}' already exists")
-            return
-
-        template = self.config["template"]
-        info(f"Creating node '{name}' from template '{template}'...")
-        success(f"Node '{name}' created and configured")
-
-        # Clone container
-        run(["incus", "copy", template, name], check=True)
-
-        # Create node directory
         node_dir = self.nodes_dir / name
-        node_dir.mkdir(exist_ok=True)
-
-        # Create manifest.yaml
-        manifest = node_dir / "manifest.yaml"
-        manifest.write_text(f"""name: {name}
-purpose: >-
-  Replace with short description
-role: unknown
-tags: []
-environment: development
-owner: {self.config['user']}
-lifecycle: experimental
-created_via: labkit node add
-dependencies: []
-notes: |
-  Add usage notes, gotchas, maintenance tips here.
-""")
-
-        # Create README.md
-        readme = node_dir / "README.md"
-        readme.write_text(f"# {name}\n\n> Update this with purpose and usage\n")
-
-        # Mount node dir into container
         mount_point = self.config["node_mount"]["mount_point"]
-        run([
-            "incus", "config", "device", "add",
-            name, "lab-node", "disk",
-            f"path={mount_point}",
-            f"source={node_dir}"
-        ], check=True)
+        shared_mp = self.config["shared_storage"]["mount_point"]
 
-        # Mount shared dir
-        if self.config["shared_storage"]["enabled"]:
-            shared_mp = self.config["shared_storage"]["mount_point"]
-            run([
+        actions = []
+
+        # 1. Create container
+        actions.append({
+            "desc": f"🔧 Create container '{name}' from '{effective_template}'",
+            "func": run,
+            "args": (["incus", "copy", effective_template, name],),
+            "kwargs": {"check": True}
+        })
+
+        # 2. Create node directory
+        actions.append({
+            "desc": f"📁 Create directory {node_dir}",
+            "func": lambda path: path.mkdir(exist_ok=True),
+            "args": (node_dir,)
+        })
+
+        # 3. Write manifest.yaml
+        def write_manifest():
+            (node_dir / "manifest.yaml").write_text(f"""name: {name}
+    purpose: >-
+    Replace with short description
+    role: unknown
+    tags: []
+    environment: development
+    owner: {self.config['user']}
+    lifecycle: experimental
+    created_via: labkit node add
+    dependencies: []
+    notes: |
+    Add usage notes, gotchas, maintenance tips here.
+    """)
+
+        actions.append({
+            "desc": f"📄 Generate {node_dir}/manifest.yaml",
+            "func": write_manifest
+        })
+
+        # 4. Write README.md
+        def write_readme():
+            (node_dir / "README.md").write_text(f"# {name}\n\n> Update this with purpose and usage\n")
+
+        actions.append({
+            "desc": f"📘 Generate {node_dir}/README.md",
+            "func": write_readme
+        })
+
+        # 5. Mount node dir
+        actions.append({
+            "desc": f"💾 Mount {node_dir} → {name}:{mount_point}",
+            "func": run,
+            "args": ([
                 "incus", "config", "device", "add",
-                name, "lab-shared", "disk",
-                f"path={shared_mp}",
-                f"source={self.shared_dir}"
-            ], check=True)
+                name, "lab-node", "disk",
+                f"path={mount_point}",
+                f"source={node_dir}"
+            ],),
+            "kwargs": {"check": True}
+        })
 
-        # Set labels
-        run(["incus", "config", "set", name,
-             f"user.lab={self.config['name']}",
-             f"user.managed-by=labkit"])
+        # 6. Mount shared storage (if enabled)
+        if self.config["shared_storage"].get("enabled", True):
+            actions.append({
+                "desc": f"📦 Mount {self.shared_dir} → {name}:{shared_mp}",
+                "func": run,
+                "args": ([
+                    "incus", "config", "device", "add",
+                    name, "lab-shared", "disk",
+                    f"path={shared_mp}",
+                    f"source={self.shared_dir}"
+                ],),
+                "kwargs": {"check": True}
+            })
 
-        print(f"✅ Node '{name}' created and configured")
-        print(f"📁 Docs: {node_dir}")
-        print(f"🔗 Mounted: {node_dir} → {name}:{mount_point}")
+        # 7. Set labels
+        actions.append({
+            "desc": f"🏷  Set labels on {name}",
+            "func": run,
+            "args": ([
+                "incus", "config", "set", name,
+                f"user.lab={self.config['name']}",
+                "user.managed-by=labkit"
+            ],),
+            "kwargs": {"check": True}
+        })
 
-        env = os.environ.copy()
-        env.setdefault("GIT_AUTHOR_NAME", "labkit")
-        env.setdefault("GIT_COMMITTER_NAME", "labkit")
-        env.setdefault("GIT_AUTHOR_EMAIL", "labkit@localhost")
-        env.setdefault("GIT_COMMITTER_EMAIL", "labkit@localhost")
+        # 8. Git commit
+        def git_commit():
+            subprocess.run(["git", "add", "."], cwd=self.root)
+            env = os.environ.copy()
+            env.setdefault("GIT_AUTHOR_NAME", "labkit")
+            env.setdefault("GIT_COMMITTER_NAME", "labkit")
+            env.setdefault("GIT_AUTHOR_EMAIL", "labkit@localhost")
+            env.setdefault("GIT_COMMITTER_EMAIL", "labkit@localhost")
+            subprocess.run([
+                "git", "commit", "-m", f"labkit: added node {name}"
+            ], cwd=self.root, env=env, check=False)  # ignore no-changes
 
-        try:
-            subprocess.run(
-                ["git", "commit", "-m", f"labkit: added node {name}"],
-                cwd=self.root,
-                input="Auto-generated by labkit\n",
-                text=True,
-                check=True,
-                env=env,
-                timeout=30
-            )
-            success(f"Committed node metadata for '{name}'")
-        except subprocess.CalledProcessError as e:
-            warning(f"Git commit failed (no changes or config issue) — continuing anyway")
-        except Exception as e:
-            warning(f"Unexpected git error: {e}")
+        actions.append({
+            "desc": "📦 Commit node metadata to Git",
+            "func": git_commit
+        })
 
-        # Auto-commit
-        subprocess.run(["git", "add", "."], cwd=self.root, text=True)
-        subprocess.run(["git", "commit", "-m", f"labkit: added node {name}"], cwd=self.root, input="auto", text=True)
+        # Execute plan
+        self._describe_and_apply(actions, dry_run)
 
-    def remove_node(self, name: str, force: bool = False):
-        """Remove a node"""
-        state = get_container_state(name)
+    def remove_node(self, name: str, force: bool = False, dry_run: bool = False):
+        from .utils import info, warning
+
+        state = self.get_container_state(name)
         if not state:
-            print(f"❌ Container '{name}' not found")
+            warning(f"Container '{name}' not found")
             return
 
         if state == "Running" and not force:
-            print(f"⚠️ '{name}' is running. Use --force to stop and delete.")
+            warning(f"⚠️ '{name}' is running. Use --force to stop and delete.")
             return
 
-        if force:
-            run(["incus", "stop", name], check=True)
-        run(["incus", "delete", name], check=True)
+        actions = []
 
-        print(f"🗑️ Deleted container '{name}'")
+        # 1. Stop container
+        if state == "Running":
+            actions.append({
+                "desc": f"🛑 Stop container: {name}",
+                "func": run,
+                "args": (["incus", "stop", name],),
+                "kwargs": {"check": True}
+            })
 
-        # Don't delete node/ dir — keep history
-        print(f"📘 Node metadata preserved in {self.nodes_dir}/{name}")
+        # 2. Delete container
+        actions.append({
+            "desc": f"🗑️ Delete container: {name}",
+            "func": run,
+            "args": (["incus", "delete", name],),
+            "kwargs": {"check": True}
+        })
+
+        # Note: We don't delete nodes/<name>/ — keep docs/history
+        actions.append({
+            "desc": f"📘 Preserve documentation in {self.nodes_dir}/{name}",
+            "func": lambda: None  # Just a message
+        })
+
+        # 3. Git commit
+        def git_commit():
+            subprocess.run(["git", "add", "."], cwd=self.root)
+            env = os.environ.copy()
+            env.setdefault("GIT_AUTHOR_NAME", "labkit")
+            env.setdefault("GIT_COMMITTER_NAME", "labkit")
+            env.setdefault("GIT_AUTHOR_EMAIL", "labkit@localhost")
+            subprocess.run([
+                "git", "commit", "-m", f"labkit: removed node {name}"
+            ], cwd=self.root, env=env, check=False)
+
+        actions.append({
+            "desc": "📦 Commit removal to Git",
+            "func": git_commit
+        })
+
+        # Execute plan
+        self._describe_and_apply(actions, dry_run)
 
     def get_node_count(self):
         if not self.nodes_dir.exists():
             return 0
         return len([d for d in self.nodes_dir.iterdir() if d.is_dir()])
-    
-    def add_requirement(self, node_names):
-        """Add one or more required external nodes (infrastructure dependencies)"""
-        from .utils import run, info, warning, success
-
-        lab_name = self.config["name"]
-
-        # Ensure requirements list exists
-        if "requires_nodes" not in self.config:
-            self.config["requires_nodes"] = []
-
-        updated_lab = False
-        infra_updated = False
-
-        for name in node_names:
-            # 1. Check if container exists
-            if not container_exists(name):
-                warning(f"Container '{name}' does not exist")
-                continue
-
-            # 2. Add to lab.yaml if not already there
-            if name not in self.config["requires_nodes"]:
-                self.config["requires_nodes"].append(name)
-                self.config["requires_nodes"].sort()
-                updated_lab = True
-                success(f"✅ Lab now requires: {name}")
-
-                # 3. Update user.required_by on the node
-                try:
-                    result = run(
-                        ["incus", "config", "get", name, "user.required_by"],
-                        silent=True,
-                        check=False,
-                    )
-                    current_labs = set()
-                    if result.returncode == 0 and result.stdout.strip():
-                        current_labs = set(result.stdout.strip().split(","))
-
-                    if lab_name not in current_labs:
-                        current_labs.add(lab_name)
-                        new_value = ",".join(sorted(current_labs))
-                        run([
-                            "incus", "config", "set", name,
-                            f"user.required_by={new_value}"
-                        ], check=True)
-                        info(f"🔗 {name}: added to user.required_by = {new_value}")
-                        infra_updated = True
-                except Exception as e:
-                    warning(f"⚠️ Failed to update 'user.required_by' on {name}: {e}")
-
-        # Save lab config if updated
-        if updated_lab:
-            self.save_config()
-            if infra_updated:
-                success("🔄 Infrastructure labels updated")
-
-    def remove_requirement(self, node_names):
-        """Remove one or more required external nodes"""
-        from .utils import run, info, warning, success
-
-        lab_name = self.config["name"]
-        requires = self.config.get("requires_nodes", [])
-        if not isinstance(requires, list):
-            requires = []
-            self.config["requires_nodes"] = []
-
-        updated_lab = False
-        infra_updated = False
-
-        for name in node_names:
-            if name in requires:
-                requires.remove(name)
-                updated_lab = True
-                warning(f"🗑️ Removed requirement: {name}")
-
-                # Try to remove from user.required_by
-                try:
-                    result = run(
-                        ["incus", "config", "get", name, "user.required_by"],
-                        silent=True,
-                        check=False,
-                    )
-                    if result.returncode == 0 and result.stdout.strip():
-                        current_labs = set(result.stdout.strip().split(","))
-                        if lab_name in current_labs:
-                            current_labs.remove(lab_name)
-                            if current_labs:
-                                new_value = ",".join(sorted(current_labs))
-                                run([
-                                    "incus", "config", "set", name,
-                                    f"user.required_by={new_value}"
-                                ], check=True)
-                                info(f"🔗 {name}: removed '{lab_name}' from user.required_by")
-                            else:
-                                run(["incus", "config", "unset", name, "user.required_by"], check=True)
-                                info(f"🔗 {name}: unset user.required_by (empty)")
-                            infra_updated = True
-                except Exception as e:
-                    warning(f"⚠️ Failed to update 'user.required_by' on {name}: {e}")
-
-        if updated_lab:
-            self.config["requires_nodes"] = sorted(requires)
-            self.save_config()
-            success("📝 Updated lab requirements")
-            if infra_updated:
-                success("🔄 Infrastructure labels updated")
 
     def save_config(self):
         """Save current config back to lab.yaml"""
@@ -292,6 +499,20 @@ notes: |
         (self.root / "lab.yaml").write_text(
             yaml.dump(data, indent=2, default_flow_style=False)
         )
+
+    def get_container_state(self, name: str) -> str:
+        """Return container status: 'Running', 'Stopped', or None if not found"""
+        result = run(["incus", "list", name, "--format=json"], silent=True, check=False)
+        if result.returncode != 0:
+            return None
+        try:
+            data = json.loads(result.stdout)
+            for c in data:
+                if c["name"] == name:
+                    return c["status"]
+            return None
+        except Exception:
+            return None
 
 def list_templates():
     result = run(["incus", "list", "--format=json"], silent=True)

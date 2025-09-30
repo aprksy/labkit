@@ -1,6 +1,6 @@
 # labkit
 
-> 🧪 Lightweight lab management for Incus containers (Linux-only)
+> 🧪 Lightweight homelab management for Incus containers (Linux-only)
 
 `labkit` is designed for Linux systems running [Incus](https://github.com/lxc/incus).  
 It does not support Windows or macOS.

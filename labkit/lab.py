@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import yaml
 from .config import LabConfig
-from .utils import run, ensure_incus_running, get_container_state, info, success, warning, error, fatal
+from .utils import container_exists, run, ensure_incus_running, get_container_state, info, success, warning, error, fatal
 
 class Lab:
     def __init__(self, root: Path):
@@ -38,15 +38,19 @@ class Lab:
         info("Next: labkit node add <name>")
         return lab
 
-    def add_node(self, name: str):
+    def add_node(self, name: str, template: str):
         """Add a new node (container) to the lab"""
         ensure_incus_running()
 
         # Use override or fallback to config
         effective_template = template or self.config["template"]
 
-        if not self._container_exists(effective_template):
+        if not container_exists(effective_template):
             error(f"Template container '{effective_template}' not found!")
+            return
+        
+        if container_exists(name):
+            error(f"Container '{name}' already exists!")
             return
 
         # Validate name
@@ -163,6 +167,131 @@ notes: |
 
         # Don't delete node/ dir — keep history
         print(f"📘 Node metadata preserved in {self.nodes_dir}/{name}")
+
+    def get_node_count(self):
+        if not self.nodes_dir.exists():
+            return 0
+        return len([d for d in self.nodes_dir.iterdir() if d.is_dir()])
+    
+    def add_requirement(self, node_names):
+        """Add one or more required external nodes (infrastructure dependencies)"""
+        from .utils import run, info, warning, success
+
+        lab_name = self.config["name"]
+
+        # Ensure requirements list exists
+        if "requires_nodes" not in self.config:
+            self.config["requires_nodes"] = []
+
+        updated_lab = False
+        infra_updated = False
+
+        for name in node_names:
+            # 1. Check if container exists
+            if not container_exists(name):
+                warning(f"Container '{name}' does not exist")
+                continue
+
+            # 2. Add to lab.yaml if not already there
+            if name not in self.config["requires_nodes"]:
+                self.config["requires_nodes"].append(name)
+                self.config["requires_nodes"].sort()
+                updated_lab = True
+                success(f"✅ Lab now requires: {name}")
+
+                # 3. Update user.required_by on the node
+                try:
+                    result = run(
+                        ["incus", "config", "get", name, "user.required_by"],
+                        silent=True,
+                        check=False,
+                    )
+                    current_labs = set()
+                    if result.returncode == 0 and result.stdout.strip():
+                        current_labs = set(result.stdout.strip().split(","))
+
+                    if lab_name not in current_labs:
+                        current_labs.add(lab_name)
+                        new_value = ",".join(sorted(current_labs))
+                        run([
+                            "incus", "config", "set", name,
+                            f"user.required_by={new_value}"
+                        ], check=True)
+                        info(f"🔗 {name}: added to user.required_by = {new_value}")
+                        infra_updated = True
+                except Exception as e:
+                    warning(f"⚠️ Failed to update 'user.required_by' on {name}: {e}")
+
+        # Save lab config if updated
+        if updated_lab:
+            self.save_config()
+            if infra_updated:
+                success("🔄 Infrastructure labels updated")
+
+    def remove_requirement(self, node_names):
+        """Remove one or more required external nodes"""
+        from .utils import run, info, warning, success
+
+        lab_name = self.config["name"]
+        requires = self.config.get("requires_nodes", [])
+        if not isinstance(requires, list):
+            requires = []
+            self.config["requires_nodes"] = []
+
+        updated_lab = False
+        infra_updated = False
+
+        for name in node_names:
+            if name in requires:
+                requires.remove(name)
+                updated_lab = True
+                warning(f"🗑️ Removed requirement: {name}")
+
+                # Try to remove from user.required_by
+                try:
+                    result = run(
+                        ["incus", "config", "get", name, "user.required_by"],
+                        silent=True,
+                        check=False,
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        current_labs = set(result.stdout.strip().split(","))
+                        if lab_name in current_labs:
+                            current_labs.remove(lab_name)
+                            if current_labs:
+                                new_value = ",".join(sorted(current_labs))
+                                run([
+                                    "incus", "config", "set", name,
+                                    f"user.required_by={new_value}"
+                                ], check=True)
+                                info(f"🔗 {name}: removed '{lab_name}' from user.required_by")
+                            else:
+                                run(["incus", "config", "unset", name, "user.required_by"], check=True)
+                                info(f"🔗 {name}: unset user.required_by (empty)")
+                            infra_updated = True
+                except Exception as e:
+                    warning(f"⚠️ Failed to update 'user.required_by' on {name}: {e}")
+
+        if updated_lab:
+            self.config["requires_nodes"] = sorted(requires)
+            self.save_config()
+            success("📝 Updated lab requirements")
+            if infra_updated:
+                success("🔄 Infrastructure labels updated")
+
+    def save_config(self):
+        """Save current config back to lab.yaml"""
+        data = {
+            "name": self.config["name"],
+            "template": self.config["template"],
+            "user": self.config["user"],
+            "managed_by": self.config["managed_by"]
+        }
+        if "requires_nodes" in self.config and self.config["requires_nodes"]:
+            data["requires_nodes"] = self.config["requires_nodes"]
+        (self.root / "lab.yaml").write_text(
+            yaml.dump(data, indent=2, default_flow_style=False)
+        )
 
 def list_templates():
     result = run(["incus", "list", "--format=json"], silent=True)

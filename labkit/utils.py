@@ -37,6 +37,19 @@ def get_container_state(name):
         warning(f"Failed to parse incus list output: {e}")
         return None
     
+def container_exists(name: str) -> bool:
+        """
+        Check if an Incus container or snapshot exists.
+        Uses 'incus info' because it's fast and authoritative.
+        """
+        from .utils import run
+        result = run(
+            ["incus", "info", name],
+            silent=True,
+            check=False
+        )
+        return result.returncode == 0
+    
 def _color(code):
     return f"\033[{code}m"
 

@@ -21,15 +21,15 @@ class Lab:
         from .utils import info, success
 
         if not actions:
-            info("✅ Nothing to do.")
+            info("Nothing to do.")
             return
 
-        info("📋 Planned actions:")
+        info("Planned actions:")
         for act in actions:
             print(f"  {act['desc']}")
 
         if dry_run:
-            info("🧪 DRY RUN: No changes applied")
+            info("DRY RUN: No changes applied")
             return
 
         # Apply
@@ -38,10 +38,10 @@ class Lab:
                 act['func'](*act.get('args', ''), **act.get('kwargs', {}))
             except Exception as e:
                 from .utils import error
-                error(f"💥 Failed to execute: {act['desc']} → {e}")
+                error(f"Failed to execute: {act['desc']} → {e}")
                 raise
 
-        success("✅ All actions completed")
+        success("All actions completed")
 
     def _log_event(self, action: str, **details):
         from datetime import datetime
@@ -120,7 +120,7 @@ class Lab:
                         ], check=True)
 
                 actions.append({
-                    "desc": f"🔗 Add '{lab_name}' to {name}.user.required_by",
+                    "desc": f"Add '{lab_name}' to {name}.user.required_by",
                     "func": update_required_by,
                     "args": (name,)
                 })
@@ -132,7 +132,7 @@ class Lab:
                 self.save_config()
 
             actions.append({
-                "desc": "💾 Save updated lab.yaml",
+                "desc": "Save updated lab.yaml",
                 "func": save_lab_config,
             })
 
@@ -173,7 +173,7 @@ class Lab:
                             run(["incus", "config", "unset", container_name, "user.required_by"], check=True)
 
                 actions.append({
-                    "desc": f"🔗 Remove '{lab_name}' from {name}.user.required_by",
+                    "desc": f"Remove '{lab_name}' from {name}.user.required_by",
                     "func": update_on_node,
                     "args": (name,)
                 })
@@ -185,7 +185,7 @@ class Lab:
                 self.save_config()
 
             actions.append({
-                "desc": "💾 Save updated lab.yaml",
+                "desc": "Save updated lab.yaml",
                 "func": save_lab_config
             })
 
@@ -208,7 +208,7 @@ class Lab:
         for name in required_nodes:
             if name not in running_names:
                 actions.append({
-                    "desc": f"🚀 Start required node: {name}",
+                    "desc": f"Start required node: {name}",
                     "func": run,
                     "args": (["incus", "start", name],),
                     "kwargs": {"check": True}
@@ -218,7 +218,7 @@ class Lab:
         for name in local_nodes:
             if name not in running_names:
                 actions.append({
-                    "desc": f"📦 Start local node: {name}",
+                    "desc": f"Start local node: {name}",
                     "func": run,
                     "args": (["incus", "start", name],),
                     "kwargs": {"check": True}
@@ -230,7 +230,7 @@ class Lab:
 
         if actions:
             actions.append({
-                "desc": "📄 Log up event",
+                "desc": "Log up event",
                 "func": log_up
             })
 
@@ -252,7 +252,7 @@ class Lab:
         for name in local_nodes:
             if name in running_names:
                 actions.append({
-                    "desc": f"🛑 Stop local node: {name}",
+                    "desc": f"Stop local node: {name}",
                     "func": run,
                     "args": (["incus", "stop", name],),
                     "kwargs": {"check": True}
@@ -269,7 +269,7 @@ class Lab:
                     )
                     if pin_result.returncode == 0 and pin_result.stdout.strip() == "true":
                         if not force_stop_all:
-                            info(f"📌 Skipping {name}: user.pinned=true")
+                            info(f"Skipping {name}: user.pinned=true")
                             continue
 
                     # Refcount check: only stop if no other active lab uses it
@@ -285,7 +285,7 @@ class Lab:
                             pass  # Future: query other labs' state
 
                     actions.append({
-                        "desc": f"⛓️ Suspend required node: {name}",
+                        "desc": f"Suspend required node: {name}",
                         "func": run,
                         "args": (["incus", "stop", name],),
                         "kwargs": {"check": True}
@@ -297,7 +297,7 @@ class Lab:
 
         if actions:
             actions.append({
-                "desc": "📄 Log down event",
+                "desc": "Log down event",
                 "func": log_down
             })
 
@@ -323,7 +323,7 @@ class Lab:
 
         # 1. Create container
         actions.append({
-            "desc": f"🔧 Create container '{name}' from '{effective_template}'",
+            "desc": f"Create container '{name}' from '{effective_template}'",
             "func": run,
             "args": (["incus", "copy", effective_template, name],),
             "kwargs": {"check": True}
@@ -331,7 +331,7 @@ class Lab:
 
         # 2. Create node directory
         actions.append({
-            "desc": f"📁 Create directory {node_dir}",
+            "desc": f"Create directory {node_dir}",
             "func": lambda path: path.mkdir(exist_ok=True),
             "args": (node_dir,)
         })
@@ -353,7 +353,7 @@ class Lab:
     """)
 
         actions.append({
-            "desc": f"📄 Generate {node_dir}/manifest.yaml",
+            "desc": f"Generate {node_dir}/manifest.yaml",
             "func": write_manifest
         })
 
@@ -362,13 +362,13 @@ class Lab:
             (node_dir / "README.md").write_text(f"# {name}\n\n> Update this with purpose and usage\n")
 
         actions.append({
-            "desc": f"📘 Generate {node_dir}/README.md",
+            "desc": f"Generate {node_dir}/README.md",
             "func": write_readme
         })
 
         # 5. Mount node dir
         actions.append({
-            "desc": f"💾 Mount {node_dir} → {name}:{mount_point}",
+            "desc": f"Mount {node_dir} → {name}:{mount_point}",
             "func": run,
             "args": ([
                 "incus", "config", "device", "add",
@@ -382,7 +382,7 @@ class Lab:
         # 6. Mount shared storage (if enabled)
         if self.config["shared_storage"].get("enabled", True):
             actions.append({
-                "desc": f"📦 Mount {self.shared_dir} → {name}:{shared_mp}",
+                "desc": f"Mount {self.shared_dir} → {name}:{shared_mp}",
                 "func": run,
                 "args": ([
                     "incus", "config", "device", "add",
@@ -395,7 +395,7 @@ class Lab:
 
         # 7. Set labels
         actions.append({
-            "desc": f"🏷  Set labels on {name}",
+            "desc": f"Set labels on {name}",
             "func": run,
             "args": ([
                 "incus", "config", "set", name,
@@ -418,7 +418,7 @@ class Lab:
             ], cwd=self.root, env=env, check=False)  # ignore no-changes
 
         actions.append({
-            "desc": "📦 Commit node metadata to Git",
+            "desc": "Commit node metadata to Git",
             "func": git_commit
         })
 
@@ -434,7 +434,7 @@ class Lab:
             return
 
         if state == "Running" and not force:
-            warning(f"⚠️ '{name}' is running. Use --force to stop and delete.")
+            warning(f"'{name}' is running. Use --force to stop and delete.")
             return
 
         actions = []
@@ -442,7 +442,7 @@ class Lab:
         # 1. Stop container
         if state == "Running":
             actions.append({
-                "desc": f"🛑 Stop container: {name}",
+                "desc": f"Stop container: {name}",
                 "func": run,
                 "args": (["incus", "stop", name],),
                 "kwargs": {"check": True}
@@ -450,7 +450,7 @@ class Lab:
 
         # 2. Delete container
         actions.append({
-            "desc": f"🗑️ Delete container: {name}",
+            "desc": f"Delete container: {name}",
             "func": run,
             "args": (["incus", "delete", name],),
             "kwargs": {"check": True}
@@ -458,7 +458,7 @@ class Lab:
 
         # Note: We don't delete nodes/<name>/ — keep docs/history
         actions.append({
-            "desc": f"📘 Preserve documentation in {self.nodes_dir}/{name}",
+            "desc": f"Preserve documentation in {self.nodes_dir}/{name}",
             "func": lambda: None  # Just a message
         })
 
@@ -474,7 +474,7 @@ class Lab:
             ], cwd=self.root, env=env, check=False)
 
         actions.append({
-            "desc": "📦 Commit removal to Git",
+            "desc": "Commit removal to Git",
             "func": git_commit
         })
 
@@ -519,4 +519,4 @@ def list_templates():
     containers = json.loads(result.stdout)
     templates = [c for c in containers if c["config"].get("user.template") == "true"]
     for c in templates:
-        print(f"📌 {c['name']}: {c.get('description', 'No description')}")
+        print(f"{c['name']}: {c.get('description', 'No description')}")

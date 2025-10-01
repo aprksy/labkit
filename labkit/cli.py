@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from labkit.utils import container_exists, info, success
+from labkit.utils import container_exists, info, success, warning, error, fatal, heading
 from .lab import Lab, list_templates
 
 def main():
@@ -42,7 +42,7 @@ def main():
     add_node_p.add_argument("name", help="Node/container name")
     add_node_p.add_argument("--template", help="Use specific template (overrides lab.yaml)")
 
-    rm_node_p = node_sub.add_parser("rm", help="Remove a node")
+    rm_node_p = node_sub.add_parser("rm", aliases=['del', 'remove', 'delete'], help="Remove a node")
     rm_node_p.add_argument("name", help="Node/container name")
     rm_node_p.add_argument("--force", action="store_true", help="Stop and delete if running")
 
@@ -53,7 +53,7 @@ def main():
     req_add_p = req_sub.add_parser("add", help="Declare that this lab requires a shared node")
     req_add_p.add_argument("names", nargs="+", help="Node names to require")
 
-    req_rm_p = req_sub.add_parser("remove", help="Remove requirement for a shared node")
+    req_rm_p = req_sub.add_parser("rm", aliases=['del', 'remove', 'delete'], help="Remove requirement for a shared node")
     req_rm_p.add_argument("names", nargs="+", help="Node names to unrequire")
 
     list_p = req_sub.add_parser("list", help="List all required external nodes")
@@ -97,7 +97,7 @@ def cmd_new(args):
 
     if project_dir.exists():
         if not args.force:
-            print(f"❌ Directory '{project_dir}' already exists. Use --force to overwrite.")
+            warning(f"Directory '{project_dir}' already exists. Use --force to overwrite.")
             return
         import shutil
         shutil.rmtree(project_dir)
@@ -105,7 +105,7 @@ def cmd_new(args):
     project_dir.mkdir(parents=True, exist_ok=args.force)
     os.chdir(project_dir)
 
-    print(f"📁 Created and entered directory: {project_dir}")
+    info(f"Created and entered directory: {project_dir}")
 
     # Reuse init logic
     cmd_init(argparse.Namespace(
@@ -118,7 +118,7 @@ def cmd_init(args):
     current_dir = Path.cwd()
 
     if (current_dir / "lab.yaml").exists():
-        print(f"⚠️  This directory is already a lab (lab.yaml exists). Skipping init.")
+        warning(f"This directory is already a lab (lab.yaml exists). Skipping init.")
         return
 
     # Determine lab name
@@ -146,19 +146,25 @@ def cmd_init(args):
 def cmd_node(args):
     current_dir = Path.cwd()
     if not (current_dir / "lab.yaml").exists():
-        print("❌ This is not a lab directory. Run 'labkit init' first.")
+        error("This is not a lab directory. Run 'labkit init' first.")
         return
 
     try:
         lab = Lab(current_dir)
     except Exception as e:
-        print(f"💥 Failed to load lab: {e}")
+        fatal(f"Failed to load lab: {e}")
         return
 
     if args.action == "add":
-        lab.add_node(args.name, template=args.template, dry_run=args.dry_run)
-    elif args.action == "rm":
-        lab.remove_node(args.name, force=args.force, dry_run=args.dry_run)
+        try:
+            lab.add_node(args.name, template=args.template, dry_run=args.dry_run)
+        except Exception as e:
+            error(f"Failed to add node: {e}")
+    elif args.action in ["rm", "remove", "del", "delete"]:
+        try:
+            lab.remove_node(args.name, force=args.force, dry_run=args.dry_run)
+        except Exception as e:
+            error(f"Failed to remove node: {e}")
 
 def cmd_list(args):
     import os
@@ -170,7 +176,7 @@ def cmd_list(args):
     search_path = Path(search_path_str)
 
     if not search_path.is_dir():
-        print(f"❌ Search path not found: {search_path}")
+        fatal(f"Search path not found: {search_path}")
         return
 
     labs = []
@@ -204,11 +210,11 @@ def cmd_list(args):
                 "full_path": item,
             })
         except Exception as e:
-            print(f"⚠️  Failed to read lab {item}: {e}")
+            error(f"Failed to read lab {item}: {e}")
 
     if not labs:
-        print(f"🔍 No labs found in {search_path}")
-        print("💡 Create one with: labkit new <project-name>")
+        error(f"No labs found in {search_path}")
+        info("Create one with: labkit new <project-name>")
         return
 
     # Sort by modification time (newest first)
@@ -223,7 +229,7 @@ def cmd_list(args):
 def _print_table(labs):
     from .utils import BOLD, RESET
 
-    print(f"\n{BOLD}📁 Labs found:{RESET}\n")
+    heading(f"\nLabs found:\n")
 
     headers = ["NAME", "NODES", "TEMPLATE", "LAST MODIFIED", "PATH"]
     rows = []
@@ -267,30 +273,35 @@ def cmd_requires(args):
     current_dir = Path.cwd()
     lab_yaml = current_dir / "lab.yaml"
     if not lab_yaml.exists():
-        print("❌ This is not a lab directory. Run 'labkit init' first.")
+        fatal("This is not a lab directory. Run 'labkit init' first.")
         return
 
     try:
         lab = Lab(current_dir)
     except Exception as e:
-        print(f"💥 Failed to load lab: {e}")
+        error(f"Failed to load lab: {e}")
         return
 
     if args.req_action == "add":
-        lab.add_requirement(args.names, args.dry_run)
-
-    elif args.req_action == "remove":
-        lab.remove_requirement(args.names, args.dry_run)
-
+        try:
+            lab.add_requirement(args.names, args.dry_run)
+        except Exception as e:
+            error(f"Failed to add required node: {e}")
+            return
+    elif args.req_action in ["rm", "remove", "del", "delete"]:
+        try:
+            lab.remove_requirement(args.names, args.dry_run)
+        except Exception as e:
+            error(f"Failed to remove required node: {e}")
+            return
     elif args.req_action == "list":
         requires = lab.config.get("requires_nodes", [])
         if requires:
-            print("🔌 This lab requires:")
+            print("This lab requires:")
             for n in sorted(requires):
                 print(f"  - {n}")
         else:
-            print("🟢 No external node requirements declared")
-
+            info("No external node requirements declared")
     elif args.req_action == "check":
         from .utils import run, success, error
         result = run(["incus", "list", "--format=json"], silent=True)
@@ -301,17 +312,15 @@ def cmd_requires(args):
             error(f"Required nodes not running: {', '.join(missing)}")
             exit(1)
         else:
-            success("✅ All required nodes are running")
-
+            success("All required nodes are running")
     elif args.req_action == "list":
         if requires:
-            print("🔌 This lab requires:")
+            print("This lab requires:")
             for n in sorted(requires):
                 print(f"  - {n}")
         else:
-            print("🟢 No external node requirements declared")
+            info("No external node requirements declared")
         return
-
     elif args.req_action == "check":
         from .utils import run
         result = run(["incus", "list", "--format=json"], silent=True)
@@ -322,33 +331,42 @@ def cmd_requires(args):
             error(f"Required nodes not running: {', '.join(missing)}")
             exit(1)
         else:
-            success("✅ All required nodes are running")
+            success("All required nodes are running")
         return
 
 def cmd_up(args):
     current_dir = Path.cwd()
     if not (current_dir / "lab.yaml").exists():
-        print("❌ This is not a lab directory. Run 'labkit init' first.")
+        fatal("This is not a lab directory. Run 'labkit init' first.")
         return
 
     try:
         lab = Lab(current_dir)
     except Exception as e:
-        print(f"💥 Failed to load lab: {e}")
+        error(f"Failed to load lab: {e}")
         return
 
-    lab.up(dry_run=args.dry_run)
+    try:
+        lab.up(dry_run=args.dry_run)
+    except Exception as e:
+        error(f"Failed to start-up lab: {e}")
+        return
 
 def cmd_down(args):
     current_dir = Path.cwd()
     if not (current_dir / "lab.yaml").exists():
-        print("❌ This is not a lab directory. Run 'labkit init' first.")
+        fatal("This is not a lab directory. Run 'labkit init' first.")
         return
 
     try:
         lab = Lab(current_dir)
     except Exception as e:
-        print(f"💥 Failed to load lab: {e}")
+        error(f"Failed to load lab: {e}")
         return
-
-    lab.down(dry_run=args.dry_run)
+    
+    try:
+        lab.down(dry_run=args.dry_run)
+    except Exception as e:
+        error(f"Failed to shutdown lab: {e}")
+        return
+    

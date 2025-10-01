@@ -11,7 +11,7 @@ def run(cmd, check=True, silent=False):
         return result
     except subprocess.CalledProcessError as e:
         if not silent:
-            error(f"❌ Command failed: {' '.join(cmd)}")
+            error(f"Command failed: {' '.join(cmd)}")
             print(e.stderr)
         raise
 
@@ -61,19 +61,19 @@ BOLD = _color("1")
 RESET = _color("0")
 
 def info(msg):
-    print(f"{BLUE}ℹ️  {msg}{RESET}")
+    print(f"{BLUE}[INFO] {msg}{RESET}")
 
 def success(msg):
-    print(f"{GREEN}✅ {msg}{RESET}")
+    print(f"{GREEN}[OK] {msg}{RESET}")
 
 def warning(msg):
-    print(f"{YELLOW}⚠️  {msg}{RESET}")
+    print(f"{YELLOW}[WARNING] {msg}{RESET}")
 
 def error(msg):
-    print(f"{RED}❌ {msg}{RESET}")
+    print(f"{RED}[ERROR] {msg}{RESET}")
 
 def fatal(msg):
-    print(f"{RED}💥 {msg}{RESET}")
+    print(f"{RED}[FATAL] {msg}{RESET}")
 
 def heading(msg):
     print(f"\n{BOLD}{msg}{RESET}")

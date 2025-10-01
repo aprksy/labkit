@@ -1,6 +1,6 @@
 # labkit
 
-> 🧪 Lightweight homelab management for Incus containers (Linux-only)
+> Lightweight homelab management for Incus containers (Linux-only)
 
 `labkit` helps you organize container-based development labs with **built-in documentation**, **dependency tracking**, and **safe automation** — all version-controlled via Git.
 
@@ -8,7 +8,7 @@ Think of it as a **developer-first environment orchestrator**: simple to use, ea
 
 ---
 
-## ✅ Features
+## Features
 
 - `labkit new <project>`: Create and enter a new lab
 - `labkit init`: Initialize current directory as a lab
@@ -25,7 +25,7 @@ Built for developers, homelab admins, and anyone managing multiple Incus environ
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # Install labkit
@@ -50,7 +50,7 @@ labkit requires list
 
 # Verify required services are running
 labkit requires check
-# ✅ All required nodes are running
+# All required nodes are running
 
 # SSH into a node (via your incus SSH config)
 ssh aprksy@web01
@@ -96,7 +96,7 @@ incus config get tile-server user.required_by
 Perfect for auditing or preventing accidental shutdowns.
 ## Available Commands
 | Command | Purpose |
-| --- | --- |
+|--------|--------|
 | `labkit new <name>` | Create + enter + init a new lab |
 | `labkit init` | Initialize current dir as a lab |
 | `labkit node add <name>` | Create container + mount docs |
@@ -105,8 +105,74 @@ Perfect for auditing or preventing accidental shutdowns.
 | `labkit requires remove <node>` | Remove requirement |
 | `labkit requires list` | Show current required nodes |
 | `labkit requires check` | Verify all required nodes are running |
+| `labkit up` | Start all local nodes and required dependencies |
+| `labkit down` | Stop all local nodes (leaves required nodes running by default) |
+| `labkit down --suspend-required` | Also stop required nodes if no other lab uses them |
+| `labkit down --force-stop-all` | Stop everything, even pinned nodes |
 | `labkit list` | Find all labs in `~/workspace/labs` |
-| `labkit audit` | Scan containers: `stray`, `pinned`, `lab-affiliated` |
+| `labkit audit` | Scan containers: stray, pinned, lab-affiliated |
+| `labkit * --dry-run` | Preview changes without applying (supported by `up`, `down`, `node add/remove`, `requires add/remove`) |
+
+## Lifecycle Management
+Use `labkit up` / `down` to manage your lab’s state:
+```shell
+# Start the lab and its dependencies
+labkit up
+
+# Stop only lab-owned nodes
+labkit down
+
+# Also suspend required nodes (if safe)
+labkit down --suspend-required
+
+# Force stop everything (use carefully)
+labkit down --force-stop-all
+
+labkit up --dry-run
+# Output:
+# Planned actions:
+#    Start required node: tile-server
+#    Start local node: web01
+# DRY RUN: No changes applied
+```
+
+## Audit & Safety 
+
+labkit tracks bidirectional relationships: 
+- Labs declare requires_nodes: [tile-server]
+- Shared nodes track user.required_by=lab1,lab2
+     
+
+This enables safe automation: 
+
+    Never stop a user.pinned=true node
+    Only suspend shared nodes when no active lab depends on them
+
+## Logging 
+
+Every up and down is logged: 
+```shell
+myproject/logs/
+├── 2025-09-25T10:22:18-up.txt
+└── 2025-09-25T15:30:05-down.txt
+```
+
+Each log includes: 
+
+    Action (up/down)
+    User
+    Timestamp
+    Nodes affected
+     
+Perfect for auditing or debugging. 
+## Encouraging Documentation 
+
+When you add a node: 
+- `nodes/<name>/manifest.yaml` and `README.md` are auto-created
+- Mounted into container at `/lab/node`
+- Commit history preserved even after container removal
+
+Tip: Update the skeleton to reflect reality — it helps everyone (including future-you). 
 
 ## Requirements 
 - Linux (Ubuntu/Debian/Fedora/etc.)

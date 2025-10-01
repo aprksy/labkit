@@ -64,6 +64,8 @@ def main():
 
     # labkit down
     down_p = subparsers.add_parser("down", help="Stop all managed nodes within the lab")
+    down_p.add_argument("--suspend-required", help="Suspend all required nodes (currently not implemented)")
+    down_p.add_argument("--force-stop-all", help="Stop all running nodes (currently not implemented)")
 
     # In parser setup
     for subparser in [up_p, down_p, add_node_p, rm_node_p, req_add_p, req_rm_p]:

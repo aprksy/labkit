@@ -1,0 +1,17 @@
+[Unit]
+Description=IncusLab - Incus Event Automation
+After=incus.service
+Requires=incus.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/path/to/your/project/root
+ExecStart=/path/to/your/project/root/.venv/bin/python3 /path/to/your/project/root/main.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

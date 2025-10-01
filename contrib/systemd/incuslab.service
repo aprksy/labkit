@@ -1,0 +1,16 @@
+[Unit]
+Description=Incus Event Automation (labkit + contrib)
+After=incus.service
+Requires=incus.service
+
+[Service]
+Type=simple
+User=aprksy
+WorkingDirectory=/home/aprksy/workspace/repo/git/project-labs/labkit
+Environment=PATH=/home/aprksy/workspace/repo/git/project-labs/labkit/.venv/bin:/usr/local/bin:/usr/bin
+ExecStart=/home/aprksy/workspace/repo/git/project-labs/labkit/.venv/bin/python3 \
+    /home/aprksy/workspace/repo/git/project-labs/labkit/contrib/incus-event-listener.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -372,7 +372,7 @@ class Lab:
             "func": run,
             "args": ([
                 "incus", "config", "device", "add",
-                name, "lab-node", "disk",
+                name, "lab-node", "disk", "shift=true",
                 f"path={mount_point}",
                 f"source={node_dir}"
             ],),
@@ -386,7 +386,7 @@ class Lab:
                 "func": run,
                 "args": ([
                     "incus", "config", "device", "add",
-                    name, "lab-shared", "disk",
+                    name, "lab-shared", "disk", "shift=true",
                     f"path={shared_mp}",
                     f"source={self.shared_dir}"
                 ],),

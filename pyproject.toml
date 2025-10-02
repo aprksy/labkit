@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "labkit"
+version = "0.2.0"
+description = "Lightweight lab management for Incus containers"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "PyYAML",
+    "dotenv",
+]
+authors = [
+    { name = "Your Name", email = "you@example.com" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+keywords = ["incus", "lxd", "container", "devops", "automation"]
+
+[project.scripts]
+labkit = "labkit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -191,42 +191,114 @@ class Lab:
 
         self._describe_and_apply(actions, dry_run)
 
-    def up(self, dry_run=False):
-        from .utils import info, success, run
+    # def up(self, dry_run=False):
+    #     from .utils import info, success, run
 
-        # Get all containers
-        result = run(["incus", "list", "--format=json"], silent=True)
+    #     # Get all containers
+    #     result = run(["incus", "list", "--format=json"], silent=True)
+    #     containers = json.loads(result.stdout)
+    #     running_names = {c["name"] for c in containers if c["status"] == "Running"}
+
+    #     local_nodes = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
+    #     required_nodes = self.config.get("requires_nodes", [])
+
+    #     actions = []
+
+    #     # Start required nodes first
+    #     for name in required_nodes:
+    #         if name not in running_names:
+    #             actions.append({
+    #                 "desc": f"Start required node: {name}",
+    #                 "func": run,
+    #                 "args": (["incus", "start", name],),
+    #                 "kwargs": {"check": True}
+    #             })
+
+    #     # Start local nodes
+    #     for name in local_nodes:
+    #         if name not in running_names:
+    #             actions.append({
+    #                 "desc": f"Start local node: {name}",
+    #                 "func": run,
+    #                 "args": (["incus", "start", name],),
+    #                 "kwargs": {"check": True}
+    #             })
+
+    #     # Log event
+    #     def log_up():
+    #         self._log_event("up", nodes_started=[a["desc"].split(": ")[-1] for a in actions if a["func"] == run])
+
+    #     if actions:
+    #         actions.append({
+    #             "desc": "Log up event",
+    #             "func": log_up
+    #         })
+
+    #     self._describe_and_apply(actions, dry_run)
+
+    def up(self, only=None, include_deps=True, dry_run=False):
+        from .utils import info, warning, run
+
+        # Parse --only into list
+        target_nodes = None
+        if only:
+            target_nodes = [n.strip() for n in only.split(",") if n.strip()]
+            info(f"Target nodes: {', '.join(target_nodes)}")
+
+        # Get current container states
+        result = run(["incus", "list", "--format=json"], check=True, text=True)
         containers = json.loads(result.stdout)
         running_names = {c["name"] for c in containers if c["status"] == "Running"}
 
-        local_nodes = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
-        required_nodes = self.config.get("requires_nodes", [])
+        # Determine which local nodes to start
+        local_node_dirs = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
+        local_to_start = []
 
+        if only:
+            for name in target_nodes:
+                if name not in local_node_dirs:
+                    warning(f"Node '{name}' not found in nodes/ — skipping")
+                elif name not in running_names:
+                    local_to_start.append(name)
+        else:
+            # Start all local nodes that aren't running
+            local_to_start = [n for n in local_node_dirs if n not in running_names]
+
+        # Determine required nodes to start
+        required_to_start = []
+        if include_deps:
+            required_nodes = self.config.get("requires_nodes", [])
+            required_to_start = [n for n in required_nodes if n not in running_names]
+
+        # Build actions
         actions = []
 
         # Start required nodes first
-        for name in required_nodes:
-            if name not in running_names:
-                actions.append({
-                    "desc": f"Start required node: {name}",
-                    "func": run,
-                    "args": (["incus", "start", name],),
-                    "kwargs": {"check": True}
-                })
+        for name in required_to_start:
+            actions.append({
+                "desc": f"Start required node: {name}",
+                "func": run,
+                "args": (["incus", "start", name],),
+                "kwargs": {"check": True}
+            })
 
         # Start local nodes
-        for name in local_nodes:
-            if name not in running_names:
-                actions.append({
-                    "desc": f"Start local node: {name}",
-                    "func": run,
-                    "args": (["incus", "start", name],),
-                    "kwargs": {"check": True}
-                })
+        for name in local_to_start:
+            actions.append({
+                "desc": f"Start local node: {name}",
+                "func": run,
+                "args": (["incus", "start", name],),
+                "kwargs": {"check": True}
+            })
 
         # Log event
         def log_up():
-            self._log_event("up", nodes_started=[a["desc"].split(": ")[-1] for a in actions if a["func"] == run])
+            self._log_event(
+                "up",
+                nodes_started=local_to_start,
+                requires_started=required_to_start,
+                filtered=only
+            )
 
         if actions:
             actions.append({

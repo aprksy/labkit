@@ -60,6 +60,7 @@ Inside any container:
 # Shows purpose, notes, maintainer tips
 cat /lab/node/README.md
 ```
+
 ## Directory Layout
 ```shell
 myapp-dev/
@@ -134,6 +135,33 @@ labkit up --dry-run
 #    Start required node: tile-server
 #    Start local node: web01
 # DRY RUN: No changes applied
+```
+
+### Selective Startup
+
+Start only specific nodes:
+
+```bash
+labkit up --only web01,db01
+```
+Useful for testing or CI. 
+
+Add `--no-deps` to skip required nodes: 
+```bash
+labkit up --only worker-1 --no-deps
+```
+All flags work with `--dry-run`. 
+
+### Selective Shutdown
+
+Stop only specific nodes:
+
+```bash
+labkit down --only web01
+```
+Combine with `--suspend-required` to also stop dependencies:
+```bash
+labkit down --only worker-1 --suspend-required
 ```
 
 ## Audit & Safety 

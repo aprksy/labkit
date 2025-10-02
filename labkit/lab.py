@@ -191,42 +191,114 @@ class Lab:
 
         self._describe_and_apply(actions, dry_run)
 
-    def up(self, dry_run=False):
-        from .utils import info, success, run
+    # def up(self, dry_run=False):
+    #     from .utils import info, success, run
 
-        # Get all containers
+    #     # Get all containers
+    #     result = run(["incus", "list", "--format=json"], silent=True)
+    #     containers = json.loads(result.stdout)
+    #     running_names = {c["name"] for c in containers if c["status"] == "Running"}
+
+    #     local_nodes = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
+    #     required_nodes = self.config.get("requires_nodes", [])
+
+    #     actions = []
+
+    #     # Start required nodes first
+    #     for name in required_nodes:
+    #         if name not in running_names:
+    #             actions.append({
+    #                 "desc": f"Start required node: {name}",
+    #                 "func": run,
+    #                 "args": (["incus", "start", name],),
+    #                 "kwargs": {"check": True}
+    #             })
+
+    #     # Start local nodes
+    #     for name in local_nodes:
+    #         if name not in running_names:
+    #             actions.append({
+    #                 "desc": f"Start local node: {name}",
+    #                 "func": run,
+    #                 "args": (["incus", "start", name],),
+    #                 "kwargs": {"check": True}
+    #             })
+
+    #     # Log event
+    #     def log_up():
+    #         self._log_event("up", nodes_started=[a["desc"].split(": ")[-1] for a in actions if a["func"] == run])
+
+    #     if actions:
+    #         actions.append({
+    #             "desc": "Log up event",
+    #             "func": log_up
+    #         })
+
+    #     self._describe_and_apply(actions, dry_run)
+
+    def up(self, only=None, include_deps=True, dry_run=False):
+        from .utils import info, warning, run
+
+        # Parse --only into list
+        target_nodes = None
+        if only:
+            target_nodes = [n.strip() for n in only.split(",") if n.strip()]
+            info(f"Target nodes: {', '.join(target_nodes)}")
+
+        # Get current container states
         result = run(["incus", "list", "--format=json"], silent=True)
         containers = json.loads(result.stdout)
         running_names = {c["name"] for c in containers if c["status"] == "Running"}
 
-        local_nodes = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
-        required_nodes = self.config.get("requires_nodes", [])
+        # Determine which local nodes to start
+        local_node_dirs = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
+        local_to_start = []
 
+        if only:
+            for name in target_nodes:
+                if name not in local_node_dirs:
+                    warning(f"Node '{name}' not found in nodes/ — skipping")
+                elif name not in running_names:
+                    local_to_start.append(name)
+        else:
+            # Start all local nodes that aren't running
+            local_to_start = [n for n in local_node_dirs if n not in running_names]
+
+        # Determine required nodes to start
+        required_to_start = []
+        if include_deps:
+            required_nodes = self.config.get("requires_nodes", [])
+            required_to_start = [n for n in required_nodes if n not in running_names]
+
+        # Build actions
         actions = []
 
         # Start required nodes first
-        for name in required_nodes:
-            if name not in running_names:
-                actions.append({
-                    "desc": f"Start required node: {name}",
-                    "func": run,
-                    "args": (["incus", "start", name],),
-                    "kwargs": {"check": True}
-                })
+        for name in required_to_start:
+            actions.append({
+                "desc": f"Start required node: {name}",
+                "func": run,
+                "args": (["incus", "start", name],),
+                "kwargs": {"check": True}
+            })
 
         # Start local nodes
-        for name in local_nodes:
-            if name not in running_names:
-                actions.append({
-                    "desc": f"Start local node: {name}",
-                    "func": run,
-                    "args": (["incus", "start", name],),
-                    "kwargs": {"check": True}
-                })
+        for name in local_to_start:
+            actions.append({
+                "desc": f"Start local node: {name}",
+                "func": run,
+                "args": (["incus", "start", name],),
+                "kwargs": {"check": True}
+            })
 
         # Log event
         def log_up():
-            self._log_event("up", nodes_started=[a["desc"].split(": ")[-1] for a in actions if a["func"] == run])
+            self._log_event(
+                "up",
+                nodes_started=local_to_start,
+                requires_started=required_to_start,
+                filtered=only
+            )
 
         if actions:
             actions.append({
@@ -236,64 +308,147 @@ class Lab:
 
         self._describe_and_apply(actions, dry_run)
 
-    def down(self, suspend_required=False, force_stop_all=False, dry_run=False):
-        from .utils import info, run
+    # def down(self, suspend_required=False, force_stop_all=False, dry_run=False):
+    #     from .utils import info, run
 
+    #     result = run(["incus", "list", "--format=json"], silent=True)
+    #     containers = json.loads(result.stdout)
+    #     running_names = {c["name"] for c in containers if c["status"] == "Running"}
+
+    #     local_nodes = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
+    #     required_nodes = self.config.get("requires_nodes", [])
+
+    #     actions = []
+
+    #     # Always stop local nodes if running
+    #     for name in local_nodes:
+    #         if name in running_names:
+    #             actions.append({
+    #                 "desc": f"Stop local node: {name}",
+    #                 "func": run,
+    #                 "args": (["incus", "stop", name],),
+    #                 "kwargs": {"check": True}
+    #             })
+
+    #     # Handle required nodes
+    #     if suspend_required or force_stop_all:
+    #         for name in required_nodes:
+    #             if name in running_names:
+    #                 # Check if pinned
+    #                 pin_result = run(
+    #                     ["incus", "config", "get", name, "user.pinned"],
+    #                     silent=True, check=False
+    #                 )
+    #                 if pin_result.returncode == 0 and pin_result.stdout.strip() == "true":
+    #                     if not force_stop_all:
+    #                         info(f"Skipping {name}: user.pinned=true")
+    #                         continue
+
+    #                 # Refcount check: only stop if no other active lab uses it
+    #                 if not force_stop_all:
+    #                     used_by = run(
+    #                         ["incus", "config", "get", name, "user.required_by"],
+    #                         silent=True, check=False
+    #                     )
+    #                     if used_by.returncode == 0 and used_by.stdout.strip():
+    #                         labs = used_by.stdout.strip().split(",")
+    #                         # Simulate: which labs are currently active?
+    #                         # For now, assume we trust user intent with --suspend-required
+    #                         pass  # Future: query other labs' state
+
+    #                 actions.append({
+    #                     "desc": f"Suspend required node: {name}",
+    #                     "func": run,
+    #                     "args": (["incus", "stop", name],),
+    #                     "kwargs": {"check": True}
+    #                 })
+
+    #     # Log event
+    #     def log_down():
+    #         self._log_event("down", nodes_stopped=[a["desc"].split(": ")[-1] for a in actions])
+
+    #     if actions:
+    #         actions.append({
+    #             "desc": "Log down event",
+    #             "func": log_down
+    #         })
+
+    #     self._describe_and_apply(actions, dry_run)
+
+    def down(self, only=None, suspend_required=False, force_stop_all=False, dry_run=False):
+        from .utils import info, warning, run
+
+        # Get current container states
         result = run(["incus", "list", "--format=json"], silent=True)
         containers = json.loads(result.stdout)
         running_names = {c["name"] for c in containers if c["status"] == "Running"}
 
-        local_nodes = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
-        required_nodes = self.config.get("requires_nodes", [])
+        # Determine which local nodes to stop
+        local_node_dirs = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
+        local_to_stop = []
 
-        actions = []
+        if only:
+            target_nodes = [n.strip() for n in only.split(",") if n.strip()]
+            info(f"Target nodes: {', '.join(target_nodes)}")
+            for name in target_nodes:
+                if name not in local_node_dirs:
+                    warning(f"Node '{name}' not found in nodes/ — skipping")
+                elif name in running_names:
+                    local_to_stop.append(name)
+                else:
+                    info(f"Node '{name}' already stopped")
+        else:
+            # Stop all running local nodes
+            local_to_stop = [n for n in local_node_dirs if n in running_names]
 
-        # Always stop local nodes if running
-        for name in local_nodes:
-            if name in running_names:
-                actions.append({
-                    "desc": f"Stop local node: {name}",
-                    "func": run,
-                    "args": (["incus", "stop", name],),
-                    "kwargs": {"check": True}
-                })
-
-        # Handle required nodes
-        if suspend_required or force_stop_all:
+        # Determine required nodes to suspend
+        required_to_suspend = []
+        if suspend_required:
+            required_nodes = self.config.get("requires_nodes", [])
             for name in required_nodes:
-                if name in running_names:
+                if name not in running_names:
+                    continue  # already stopped
+                if not force_stop_all:
                     # Check if pinned
                     pin_result = run(
                         ["incus", "config", "get", name, "user.pinned"],
-                        silent=True, check=False
+                        silent=True, text=True, check=False
                     )
                     if pin_result.returncode == 0 and pin_result.stdout.strip() == "true":
-                        if not force_stop_all:
-                            info(f"Skipping {name}: user.pinned=true")
-                            continue
+                        info(f"Skipping {name}: user.pinned=true")
+                        continue
+                    # Future: refcount check via user.required_by
+                required_to_suspend.append(name)
 
-                    # Refcount check: only stop if no other active lab uses it
-                    if not force_stop_all:
-                        used_by = run(
-                            ["incus", "config", "get", name, "user.required_by"],
-                            silent=True, check=False
-                        )
-                        if used_by.returncode == 0 and used_by.stdout.strip():
-                            labs = used_by.stdout.strip().split(",")
-                            # Simulate: which labs are currently active?
-                            # For now, assume we trust user intent with --suspend-required
-                            pass  # Future: query other labs' state
+        # Build actions
+        actions = []
 
-                    actions.append({
-                        "desc": f"Suspend required node: {name}",
-                        "func": run,
-                        "args": (["incus", "stop", name],),
-                        "kwargs": {"check": True}
-                    })
+        # Stop local nodes
+        for name in local_to_stop:
+            actions.append({
+                "desc": f"Stop local node: {name}",
+                "func": run,
+                "args": (["incus", "stop", name],),
+                "kwargs": {"check": True}
+            })
+
+        # Suspend required nodes
+        for name in required_to_suspend:
+            actions.append({
+                "desc": f"Suspend required node: {name}",
+                "func": run,
+                "args": (["incus", "stop", name],),
+                "kwargs": {"check": True}
+            })
 
         # Log event
         def log_down():
-            self._log_event("down", nodes_stopped=[a["desc"].split(": ")[-1] for a in actions])
+            self._log_event(
+                "down",
+                nodes_stopped=local_to_stop,
+                requires_suspended=required_to_suspend,
+                filtered=only
+            )
 
         if actions:
             actions.append({
@@ -372,7 +527,7 @@ class Lab:
             "func": run,
             "args": ([
                 "incus", "config", "device", "add",
-                name, "lab-node", "disk",
+                name, "lab-node", "disk", "shift=true",
                 f"path={mount_point}",
                 f"source={node_dir}"
             ],),
@@ -386,7 +541,7 @@ class Lab:
                 "func": run,
                 "args": ([
                     "incus", "config", "device", "add",
-                    name, "lab-shared", "disk",
+                    name, "lab-shared", "disk", "shift=true",
                     f"path={shared_mp}",
                     f"source={self.shared_dir}"
                 ],),

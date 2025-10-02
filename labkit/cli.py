@@ -61,9 +61,12 @@ def main():
 
     # labkit up
     up_p = subparsers.add_parser("up", help="Start all managed nodes within the lab")
+    up_p.add_argument("--only", help="Only start specific nodes (comma-separated, e.g. web01,db01)")
+    up_p.add_argument("--no-deps", action="store_true", help="Don't start required_nodes dependencies")
 
     # labkit down
     down_p = subparsers.add_parser("down", help="Stop all managed nodes within the lab")
+    down_p.add_argument("--only", help="Only stop specific nodes (comma-separated, e.g. web01,db01)")
     down_p.add_argument("--suspend-required", help="Suspend all required nodes (currently not implemented)")
     down_p.add_argument("--force-stop-all", help="Stop all running nodes (currently not implemented)")
 
@@ -349,7 +352,11 @@ def cmd_up(args):
         return
 
     try:
-        lab.up(dry_run=args.dry_run)
+        lab.up(
+            only=args.only,
+            include_deps=not args.no_deps,
+            dry_run=args.dry_run
+        )
     except Exception as e:
         error(f"Failed to start-up lab: {e}")
         return
@@ -367,7 +374,12 @@ def cmd_down(args):
         return
     
     try:
-        lab.down(dry_run=args.dry_run)
+        lab.down(
+            only=args.only,
+            suspend_required=args.suspend_required,
+            force_stop_all=args.force_stop_all,
+            dry_run=args.dry_run
+        )
     except Exception as e:
         error(f"Failed to shutdown lab: {e}")
         return

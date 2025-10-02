@@ -152,6 +152,18 @@ labkit up --only worker-1 --no-deps
 ```
 All flags work with `--dry-run`. 
 
+### Selective Shutdown
+
+Stop only specific nodes:
+
+```bash
+labkit down --only web01
+```
+Combine with `--suspend-required` to also stop dependencies:
+```bash
+labkit down --only worker-1 --suspend-required
+```
+
 ## Audit & Safety 
 
 labkit tracks bidirectional relationships: 

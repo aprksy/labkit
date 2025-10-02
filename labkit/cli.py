@@ -66,6 +66,7 @@ def main():
 
     # labkit down
     down_p = subparsers.add_parser("down", help="Stop all managed nodes within the lab")
+    down_p.add_argument("--only", help="Only stop specific nodes (comma-separated, e.g. web01,db01)")
     down_p.add_argument("--suspend-required", help="Suspend all required nodes (currently not implemented)")
     down_p.add_argument("--force-stop-all", help="Stop all running nodes (currently not implemented)")
 
@@ -373,7 +374,12 @@ def cmd_down(args):
         return
     
     try:
-        lab.down(dry_run=args.dry_run)
+        lab.down(
+            only=args.only,
+            suspend_required=args.suspend_required,
+            force_stop_all=args.force_stop_all,
+            dry_run=args.dry_run
+        )
     except Exception as e:
         error(f"Failed to shutdown lab: {e}")
         return

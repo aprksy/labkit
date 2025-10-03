@@ -44,7 +44,7 @@ labkit requires add tile-server nexus-cache
 # List what this lab needs
 labkit requires list
 # Output:
-# 🔌 This lab requires:
+# This lab requires:
 #   - nexus-cache
 #   - tile-server
 

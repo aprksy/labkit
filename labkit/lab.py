@@ -1,13 +1,20 @@
+"""
+lab.py: module that serve homelab management using Incus containers
+"""
 import json
-from logging import info
+import getpass
 import os
 from pathlib import Path
 import subprocess
+from datetime import datetime
 import yaml
 from .config import LabConfig
-from .utils import container_exists, run, ensure_incus_running, get_container_state, info, success, warning, error, fatal
+from .utils import container_exists, run, info, success, error, warning
 
 class Lab:
+    """
+    Lab: class that encapsulates both data and mechanism for managing homelabs
+    """
     def __init__(self, root: Path):
         self.root = root.absolute()
         self.config_path = self.root / "lab.yaml"
@@ -17,9 +24,9 @@ class Lab:
         self.dry_run = False
 
     def _describe_and_apply(self, actions, dry_run=False):
-        """Show all planned actions, then execute if not dry_run."""
-        from .utils import info, success
-
+        """
+        _describe_and_apply: show all planned actions, then execute if not dry_run.
+        """
         if not actions:
             info("Nothing to do.")
             return
@@ -37,15 +44,15 @@ class Lab:
             try:
                 act['func'](*act.get('args', ''), **act.get('kwargs', {}))
             except Exception as e:
-                from .utils import error
                 error(f"Failed to execute: {act['desc']} → {e}")
                 raise
 
         success("All actions completed")
 
     def _log_event(self, action: str, **details):
-        from datetime import datetime
-        import getpass
+        """
+        _log_event: logs event triggered by homelab management ops
+        """
         log_dir = self.root / "logs"
         log_dir.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -64,7 +71,9 @@ class Lab:
 
     @classmethod
     def init(cls, path: Path):
-        """Initialize a new lab"""
+        """
+        init: initialize a new lab from inside the target directory
+        """
         path.mkdir(exist_ok=True)
         lab = cls(path)
         lab.nodes_dir.mkdir(exist_ok=True)
@@ -72,9 +81,10 @@ class Lab:
 
         # Create git repo
         if not (path / ".git").exists():
-            subprocess.run(["git", "init"], cwd=path, text=True)
-            subprocess.run(["git", "add", "."], cwd=path, text=True)
-            subprocess.run(["git", "commit", "-m", "labkit: initial commit"], cwd=path, input="init", text=True)
+            subprocess.run(["git", "init"], cwd=path, text=True, check=True)
+            subprocess.run(["git", "add", "."], cwd=path, text=True, check=True)
+            subprocess.run(["git", "commit", "-m", "labkit: initial commit"],
+                           cwd=path, input="init", text=True, check=True)
 
         # Create README
         readme = path / "README.md"
@@ -86,8 +96,10 @@ class Lab:
         return lab
 
     def add_requirement(self, node_names, dry_run=False):
-        from .utils import info, warning
-
+        """
+        add_requirement: adds external node as requirement without including
+        the node into the lab
+        """
         lab_name = self.config["name"]
         requires = set(self.config.get("requires_nodes", []))
 
@@ -139,8 +151,9 @@ class Lab:
         self._describe_and_apply(actions, dry_run)
 
     def remove_requirement(self, node_names, dry_run=False):
-        from .utils import info, warning
-
+        """
+        remove_requirement: removes included external node from requirement
+        """
         lab_name = self.config["name"]
         requires = set(self.config.get("requires_nodes", []))
         original_count = len(requires)
@@ -160,7 +173,8 @@ class Lab:
                     )
                     if result.returncode != 0:
                         return
-                    current = set(result.stdout.strip().split(",")) if result.stdout.strip() else set()
+                    current = set(result.stdout.strip().split(",")) \
+                        if result.stdout.strip() else set()
                     if lab_name in current:
                         current.remove(lab_name)
                         if current:
@@ -170,7 +184,8 @@ class Lab:
                                 f"user.required_by={new_val}"
                             ], check=True)
                         else:
-                            run(["incus", "config", "unset", container_name, "user.required_by"], check=True)
+                            run(["incus", "config", "unset", container_name, "user.required_by"],
+                                check=True)
 
                 actions.append({
                     "desc": f"Remove '{lab_name}' from {name}.user.required_by",
@@ -191,54 +206,10 @@ class Lab:
 
         self._describe_and_apply(actions, dry_run)
 
-    # def up(self, dry_run=False):
-    #     from .utils import info, success, run
-
-    #     # Get all containers
-    #     result = run(["incus", "list", "--format=json"], silent=True)
-    #     containers = json.loads(result.stdout)
-    #     running_names = {c["name"] for c in containers if c["status"] == "Running"}
-
-    #     local_nodes = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
-    #     required_nodes = self.config.get("requires_nodes", [])
-
-    #     actions = []
-
-    #     # Start required nodes first
-    #     for name in required_nodes:
-    #         if name not in running_names:
-    #             actions.append({
-    #                 "desc": f"Start required node: {name}",
-    #                 "func": run,
-    #                 "args": (["incus", "start", name],),
-    #                 "kwargs": {"check": True}
-    #             })
-
-    #     # Start local nodes
-    #     for name in local_nodes:
-    #         if name not in running_names:
-    #             actions.append({
-    #                 "desc": f"Start local node: {name}",
-    #                 "func": run,
-    #                 "args": (["incus", "start", name],),
-    #                 "kwargs": {"check": True}
-    #             })
-
-    #     # Log event
-    #     def log_up():
-    #         self._log_event("up", nodes_started=[a["desc"].split(": ")[-1] for a in actions if a["func"] == run])
-
-    #     if actions:
-    #         actions.append({
-    #             "desc": "Log up event",
-    #             "func": log_up
-    #         })
-
-    #     self._describe_and_apply(actions, dry_run)
-
     def up(self, only=None, include_deps=True, dry_run=False):
-        from .utils import info, warning, run
-
+        """
+        up: bring up the lab, starting Incus containers
+        """
         # Parse --only into list
         target_nodes = None
         if only:
@@ -308,76 +279,10 @@ class Lab:
 
         self._describe_and_apply(actions, dry_run)
 
-    # def down(self, suspend_required=False, force_stop_all=False, dry_run=False):
-    #     from .utils import info, run
-
-    #     result = run(["incus", "list", "--format=json"], silent=True)
-    #     containers = json.loads(result.stdout)
-    #     running_names = {c["name"] for c in containers if c["status"] == "Running"}
-
-    #     local_nodes = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
-    #     required_nodes = self.config.get("requires_nodes", [])
-
-    #     actions = []
-
-    #     # Always stop local nodes if running
-    #     for name in local_nodes:
-    #         if name in running_names:
-    #             actions.append({
-    #                 "desc": f"Stop local node: {name}",
-    #                 "func": run,
-    #                 "args": (["incus", "stop", name],),
-    #                 "kwargs": {"check": True}
-    #             })
-
-    #     # Handle required nodes
-    #     if suspend_required or force_stop_all:
-    #         for name in required_nodes:
-    #             if name in running_names:
-    #                 # Check if pinned
-    #                 pin_result = run(
-    #                     ["incus", "config", "get", name, "user.pinned"],
-    #                     silent=True, check=False
-    #                 )
-    #                 if pin_result.returncode == 0 and pin_result.stdout.strip() == "true":
-    #                     if not force_stop_all:
-    #                         info(f"Skipping {name}: user.pinned=true")
-    #                         continue
-
-    #                 # Refcount check: only stop if no other active lab uses it
-    #                 if not force_stop_all:
-    #                     used_by = run(
-    #                         ["incus", "config", "get", name, "user.required_by"],
-    #                         silent=True, check=False
-    #                     )
-    #                     if used_by.returncode == 0 and used_by.stdout.strip():
-    #                         labs = used_by.stdout.strip().split(",")
-    #                         # Simulate: which labs are currently active?
-    #                         # For now, assume we trust user intent with --suspend-required
-    #                         pass  # Future: query other labs' state
-
-    #                 actions.append({
-    #                     "desc": f"Suspend required node: {name}",
-    #                     "func": run,
-    #                     "args": (["incus", "stop", name],),
-    #                     "kwargs": {"check": True}
-    #                 })
-
-    #     # Log event
-    #     def log_down():
-    #         self._log_event("down", nodes_stopped=[a["desc"].split(": ")[-1] for a in actions])
-
-    #     if actions:
-    #         actions.append({
-    #             "desc": "Log down event",
-    #             "func": log_down
-    #         })
-
-    #     self._describe_and_apply(actions, dry_run)
-
     def down(self, only=None, suspend_required=False, force_stop_all=False, dry_run=False):
-        from .utils import info, warning, run
-
+        """
+        down: bring down the lab, stop Incus containers
+        """
         # Get current container states
         result = run(["incus", "list", "--format=json"], silent=True)
         containers = json.loads(result.stdout)
@@ -412,7 +317,7 @@ class Lab:
                     # Check if pinned
                     pin_result = run(
                         ["incus", "config", "get", name, "user.pinned"],
-                        silent=True, text=True, check=False
+                        silent=True, check=False
                     )
                     if pin_result.returncode == 0 and pin_result.stdout.strip() == "true":
                         info(f"Skipping {name}: user.pinned=true")
@@ -459,8 +364,9 @@ class Lab:
         self._describe_and_apply(actions, dry_run)
 
     def add_node(self, name: str, template: str = None, dry_run: bool = False):
-        from .utils import info, warning
-
+        """
+        add_node: adds a new node into the lab
+        """
         # Resolve template
         effective_template = template or self.config["template"]
 
@@ -514,7 +420,8 @@ class Lab:
 
         # 4. Write README.md
         def write_readme():
-            (node_dir / "README.md").write_text(f"# {name}\n\n> Update this with purpose and usage\n")
+            (node_dir / "README.md").write_text(
+                f"# {name}\n\n> Update this with purpose and usage\n")
 
         actions.append({
             "desc": f"Generate {node_dir}/README.md",
@@ -562,7 +469,7 @@ class Lab:
 
         # 8. Git commit
         def git_commit():
-            subprocess.run(["git", "add", "."], cwd=self.root)
+            subprocess.run(["git", "add", "."], cwd=self.root, check=True)
             env = os.environ.copy()
             env.setdefault("GIT_AUTHOR_NAME", "labkit")
             env.setdefault("GIT_COMMITTER_NAME", "labkit")
@@ -581,8 +488,9 @@ class Lab:
         self._describe_and_apply(actions, dry_run)
 
     def remove_node(self, name: str, force: bool = False, dry_run: bool = False):
-        from .utils import info, warning
-
+        """
+        remove_node: removes a node from the lab
+        """
         state = self.get_container_state(name)
         if not state:
             warning(f"Container '{name}' not found")
@@ -619,7 +527,7 @@ class Lab:
 
         # 3. Git commit
         def git_commit():
-            subprocess.run(["git", "add", "."], cwd=self.root)
+            subprocess.run(["git", "add", "."], cwd=self.root, check=True)
             env = os.environ.copy()
             env.setdefault("GIT_AUTHOR_NAME", "labkit")
             env.setdefault("GIT_COMMITTER_NAME", "labkit")
@@ -637,12 +545,17 @@ class Lab:
         self._describe_and_apply(actions, dry_run)
 
     def get_node_count(self):
+        """
+        get_node_count: get node count inside the homelab
+        """
         if not self.nodes_dir.exists():
             return 0
         return len([d for d in self.nodes_dir.iterdir() if d.is_dir()])
 
     def save_config(self):
-        """Save current config back to lab.yaml"""
+        """
+        save_config: save current config back to lab.yaml
+        """
         data = {
             "name": self.config["name"],
             "template": self.config["template"],
@@ -656,7 +569,10 @@ class Lab:
         )
 
     def get_container_state(self, name: str) -> str:
-        """Return container status: 'Running', 'Stopped', or None if not found"""
+        """
+        get_container_state: return container status: 'Running', 'Stopped', 
+        or None if not found
+        """
         result = run(["incus", "list", name, "--format=json"], silent=True, check=False)
         if result.returncode != 0:
             return None
@@ -666,10 +582,13 @@ class Lab:
                 if c["name"] == name:
                     return c["status"]
             return None
-        except Exception:
-            return None
+        except Exception as e:
+            raise RuntimeError(f"Failed to get container state: {e}") from e
 
 def list_templates():
+    """
+    list_templates: lists all available templates
+    """
     result = run(["incus", "list", "--format=json"], silent=True)
     containers = json.loads(result.stdout)
     templates = [c for c in containers if c["config"].get("user.template") == "true"]

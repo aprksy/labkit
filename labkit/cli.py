@@ -1,82 +1,50 @@
+"""
+This module purpose is to handle command line interface
+"""
+
 import argparse
 from datetime import datetime
 import json
-from logging import error, warning
 import os
 from pathlib import Path
-
+import sys
+import shutil
 import yaml
 
-from labkit.utils import container_exists, info, success, warning, error, fatal, heading
+from .utils import container_exists, run, info, success, error, warning, fatal, heading, \
+    BOLD, RESET
 from .lab import Lab, list_templates
 
 def main():
+    """
+    main: main loop for the program
+    """
     parser = argparse.ArgumentParser(description="labkit - Incus lab manager")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # labkit new <name>
-    new_p = subparsers.add_parser("new", help="Create a new lab in a new directory")
-    new_p.add_argument("name", help="Lab/project name")
-    new_p.add_argument("--template", help="Override default template for nodes")
-    new_p.add_argument("--force", "-f", action="store_true", help="Overwrite existing directory")
+    prepare_cmd_new(subparsers)
 
     # labkit init
-    init_p = subparsers.add_parser("init", help="Initialize current directory as a lab")
-    init_p.add_argument("--name", type=str, help="Lab name")
-    init_p.add_argument("--template", help="Set default node template")
+    prepare_cmd_init(subparsers)
 
     # labkit list
-    list_p = subparsers.add_parser("list", help="List all labs in workspace")
-    list_p.add_argument("--path", type=str, help="Search path (default: ~/workspace/labs)")
-    list_p.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
+    prepare_cmd_list(subparsers)
 
     # labkit template
-    template_p = subparsers.add_parser("template", help="Initialize current directory as a lab")
-    template_sub = template_p.add_subparsers(dest="action", required=True)
-    template_sub.add_parser("list", help="List node templates")
+    prepare_cmd_template(subparsers)
 
     # labkit node add
-    node_p = subparsers.add_parser("node", help="Manage nodes")
-    node_sub = node_p.add_subparsers(dest="action", required=True)
-    add_node_p = node_sub.add_parser("add", help="Add a new node")
-    add_node_p.add_argument("name", help="Node/container name")
-    add_node_p.add_argument("--template", help="Use specific template (overrides lab.yaml)")
-
-    rm_node_p = node_sub.add_parser("rm", aliases=['del', 'remove', 'delete'], help="Remove a node")
-    rm_node_p.add_argument("name", help="Node/container name")
-    rm_node_p.add_argument("--force", action="store_true", help="Stop and delete if running")
+    prepare_cmd_node(subparsers)
 
     # labkit requires
-    req_p = subparsers.add_parser("requires", help="Manage external node dependencies")
-    req_sub = req_p.add_subparsers(dest="req_action", required=True)
-
-    req_add_p = req_sub.add_parser("add", help="Declare that this lab requires a shared node")
-    req_add_p.add_argument("names", nargs="+", help="Node names to require")
-
-    req_rm_p = req_sub.add_parser("rm", aliases=['del', 'remove', 'delete'], help="Remove requirement for a shared node")
-    req_rm_p.add_argument("names", nargs="+", help="Node names to unrequire")
-
-    list_p = req_sub.add_parser("list", help="List all required external nodes")
-    req_sub.add_parser("check", help="Check if all required nodes are running")
+    prepare_cmd_requires(subparsers)
 
     # labkit up
-    up_p = subparsers.add_parser("up", help="Start all managed nodes within the lab")
-    up_p.add_argument("--only", help="Only start specific nodes (comma-separated, e.g. web01,db01)")
-    up_p.add_argument("--no-deps", action="store_true", help="Don't start required_nodes dependencies")
+    prepare_cmd_up(subparsers)
 
     # labkit down
-    down_p = subparsers.add_parser("down", help="Stop all managed nodes within the lab")
-    down_p.add_argument("--only", help="Only stop specific nodes (comma-separated, e.g. web01,db01)")
-    down_p.add_argument("--suspend-required", help="Suspend all required nodes (currently not implemented)")
-    down_p.add_argument("--force-stop-all", help="Stop all running nodes (currently not implemented)")
-
-    # In parser setup
-    for subparser in [up_p, down_p, add_node_p, rm_node_p, req_add_p, req_rm_p]:
-        subparser.add_argument(
-            "--dry-run", "-n",
-            action="store_true",
-            help="Show what would be done without applying changes"
-        )    
+    prepare_cmd_down(subparsers)
 
     args = parser.parse_args()
     if args.command == "new":
@@ -96,15 +64,27 @@ def main():
     elif args.command == "template":
         if args.action == "list":
             list_templates()
-    
+
+def prepare_cmd_new(subparsers):
+    """
+    prepare_cmd_node: prepares parser for subcommand and args for `new`
+    """
+    new_p = subparsers.add_parser("new", help="Create a new lab in a new directory")
+    new_p.add_argument("name", help="Lab/project name")
+    new_p.add_argument("--template", help="Override default template for nodes")
+    new_p.add_argument("--force", "-f", action="store_true",
+                       help="Overwrite existing directory")
+
 def cmd_new(args):
+    """
+    cmd_new: handles 'new' command
+    """
     project_dir = Path(args.name).absolute()
 
     if project_dir.exists():
         if not args.force:
             warning(f"Directory '{project_dir}' already exists. Use --force to overwrite.")
             return
-        import shutil
         shutil.rmtree(project_dir)
 
     project_dir.mkdir(parents=True, exist_ok=args.force)
@@ -119,11 +99,23 @@ def cmd_new(args):
         template=args.template or "golden-base"
     ))
 
+def prepare_cmd_init(subparsers):
+    """
+    prepare_cmd_node: prepares parser for subcommand and args for `init`
+    """
+    init_p = subparsers.add_parser("init",
+    help="Initialize current directory as a lab")
+    init_p.add_argument("--name", type=str, help="Lab name")
+    init_p.add_argument("--template", help="Set default node template")
+
 def cmd_init(args):
+    """
+    cmd_init: handles 'init' command
+    """
     current_dir = Path.cwd()
 
     if (current_dir / "lab.yaml").exists():
-        warning(f"This directory is already a lab (lab.yaml exists). Skipping init.")
+        warning("This directory is already a lab (lab.yaml exists). Skipping init.")
         return
 
     # Determine lab name
@@ -145,10 +137,36 @@ def cmd_init(args):
         "managed_by: labkit\n"
     )
 
-    from .utils import success
+    # from .utils import success
     success(f"Initialized empty lab '{lab_name}'")
 
+def prepare_cmd_node(subparsers):
+    """
+    prepare_cmd_node: prepares parser for subcommand and args for `node`
+    """
+    node_p = subparsers.add_parser("node", help="Manage nodes")
+    node_sub = node_p.add_subparsers(dest="action", required=True)
+    add_node_p = node_sub.add_parser("add", help="Add a new node")
+    add_node_p.add_argument("name", help="Node/container name")
+    add_node_p.add_argument("--template", help="Use specific template (overrides lab.yaml)")
+
+    rm_node_p = node_sub.add_parser("rm", aliases=['del', 'remove', 'delete'],
+                                    help="Remove a node")
+    rm_node_p.add_argument("name", help="Node/container name")
+    rm_node_p.add_argument("--force", action="store_true", help="Stop and delete if running")
+
+    # In parser setup
+    for subparser in [add_node_p, rm_node_p]:
+        subparser.add_argument(
+            "--dry-run", "-n",
+            action="store_true",
+            help="Show what would be done without applying changes"
+        )
+
 def cmd_node(args):
+    """
+    cmd_node: handles 'node' command
+    """
     current_dir = Path.cwd()
     if not (current_dir / "lab.yaml").exists():
         error("This is not a lab directory. Run 'labkit init' first.")
@@ -156,25 +174,34 @@ def cmd_node(args):
 
     try:
         lab = Lab(current_dir)
-    except Exception as e:
+    except RuntimeError as e:
         fatal(f"Failed to load lab: {e}")
         return
 
     if args.action == "add":
         try:
             lab.add_node(args.name, template=args.template, dry_run=args.dry_run)
-        except Exception as e:
+        except RuntimeError as e:
             error(f"Failed to add node: {e}")
     elif args.action in ["rm", "remove", "del", "delete"]:
         try:
             lab.remove_node(args.name, force=args.force, dry_run=args.dry_run)
-        except Exception as e:
+        except RuntimeError as e:
             error(f"Failed to remove node: {e}")
 
+def prepare_cmd_list(subparsers):
+    """
+    prepare_cmd_node: prepares parser for subcommand and args for `list`
+    """
+    list_p = subparsers.add_parser("list", help="List all labs in workspace")
+    list_p.add_argument("--path", type=str, help="Search path (default: ~/workspace/labs)")
+    list_p.add_argument("--format", choices=["table", "json"], default="table",
+                        help="Output format")
+
 def cmd_list(args):
-    import os
-    from pathlib import Path
-    from datetime import datetime
+    """
+    cmd_list: handles 'list' command
+    """
 
     # Determine search path
     search_path_str = args.path or os.path.expanduser("~/workspace/labs")
@@ -200,11 +227,13 @@ def cmd_list(args):
 
             # Count nodes
             nodes_dir = item / "nodes"
-            node_count = len([d for d in nodes_dir.iterdir() if d.is_dir()]) if nodes_dir.exists() else 0
+            node_count = len([d for d in nodes_dir.iterdir() if d.is_dir()]) \
+                if nodes_dir.exists() else 0
 
             template = config.get("template", "unknown")
             mtime = datetime.fromtimestamp(lab_yaml.stat().st_mtime)
-            relative_path = f"~/{item.relative_to(Path.home())}" if item.is_relative_to(Path.home()) else str(item)
+            relative_path = f"~/{item.relative_to(Path.home())}" \
+                if item.is_relative_to(Path.home()) else str(item)
 
             labs.append({
                 "name": name,
@@ -214,7 +243,7 @@ def cmd_list(args):
                 "path": relative_path,
                 "full_path": item,
             })
-        except Exception as e:
+        except RuntimeError as e:
             error(f"Failed to read lab {item}: {e}")
 
     if not labs:
@@ -226,15 +255,16 @@ def cmd_list(args):
     labs.sort(key=lambda x: x["mtime"], reverse=True)
 
     if args.format == "json":
-        import json as std_json
-        print(std_json.dumps(labs, indent=2, default=str))
+        print(json.dumps(labs, indent=2, default=str))
     else:
         _print_table(labs)
 
 def _print_table(labs):
-    from .utils import BOLD, RESET
+    """
+    _print_table: print in table format
+    """
 
-    heading(f"\nLabs found:\n")
+    heading("\nLabs found:\n")
 
     headers = ["NAME", "NODES", "TEMPLATE", "LAST MODIFIED", "PATH"]
     rows = []
@@ -244,12 +274,11 @@ def _print_table(labs):
         diff = now - dt
         if diff.days > 0:
             return f"{diff.days}d ago"
-        elif diff.seconds > 3600:
+        if diff.seconds > 3600:
             return f"{diff.seconds//3600}h ago"
-        elif diff.seconds > 60:
+        if diff.seconds > 60:
             return f"{diff.seconds//60}m ago"
-        else:
-            return "now"
+        return "now"
 
     for lab in labs:
         rows.append([
@@ -274,7 +303,34 @@ def _print_table(labs):
 
     print()
 
+def prepare_cmd_requires(subparsers):
+    """
+    prepare_cmd_requires: prepare args for cnd_requires
+    """
+    req_p = subparsers.add_parser("requires", help="Manage external node dependencies")
+    req_sub = req_p.add_subparsers(dest="req_action", required=True)
+
+    req_sub.add_parser("list", help="List all required external nodes")
+    req_sub.add_parser("check", help="Check if all required nodes are running")
+
+    req_add_p = req_sub.add_parser("add", help="Declare that this lab requires a shared node")
+    req_add_p.add_argument("names", nargs="+", help="Node names to require")
+
+    req_rm_p = req_sub.add_parser("rm", aliases=['del', 'remove', 'delete'],
+                                  help="Remove requirement for a shared node")
+    req_rm_p.add_argument("names", nargs="+", help="Node names to unrequire")
+
+    for subparser in [req_add_p, req_rm_p]:
+        subparser.add_argument(
+            "--dry-run", "-n",
+            action="store_true",
+            help="Show what would be done without applying changes"
+        )
+
 def cmd_requires(args):
+    """
+    cmd_requires: handles 'requires' command
+    """
     current_dir = Path.cwd()
     lab_yaml = current_dir / "lab.yaml"
     if not lab_yaml.exists():
@@ -283,63 +339,65 @@ def cmd_requires(args):
 
     try:
         lab = Lab(current_dir)
-    except Exception as e:
+    except RuntimeError as e:
         error(f"Failed to load lab: {e}")
         return
 
-    if args.req_action == "add":
-        try:
-            lab.add_requirement(args.names, args.dry_run)
-        except Exception as e:
-            error(f"Failed to add required node: {e}")
-            return
-    elif args.req_action in ["rm", "remove", "del", "delete"]:
-        try:
-            lab.remove_requirement(args.names, args.dry_run)
-        except Exception as e:
-            error(f"Failed to remove required node: {e}")
-            return
-    elif args.req_action == "list":
-        requires = lab.config.get("requires_nodes", [])
-        if requires:
-            print("This lab requires:")
-            for n in sorted(requires):
-                print(f"  - {n}")
-        else:
-            info("No external node requirements declared")
-    elif args.req_action == "check":
-        from .utils import run, success, error
-        result = run(["incus", "list", "--format=json"], silent=True)
-        containers = json.loads(result.stdout)
-        running = {c["name"] for c in containers if c["status"] == "Running"}
-        missing = [n for n in lab.config.get("requires_nodes", []) if n not in running]
-        if missing:
-            error(f"Required nodes not running: {', '.join(missing)}")
-            exit(1)
-        else:
-            success("All required nodes are running")
-    elif args.req_action == "list":
-        if requires:
-            print("This lab requires:")
-            for n in sorted(requires):
-                print(f"  - {n}")
-        else:
-            info("No external node requirements declared")
-        return
-    elif args.req_action == "check":
-        from .utils import run
-        result = run(["incus", "list", "--format=json"], silent=True)
-        containers = json.loads(result.stdout)
-        running = {c["name"] for c in containers if c["status"] == "Running"}
-        missing = [n for n in requires if n not in running]
-        if missing:
-            error(f"Required nodes not running: {', '.join(missing)}")
-            exit(1)
-        else:
-            success("All required nodes are running")
-        return
+    match args.req_action:
+        case "add":
+            try:
+                lab.add_requirement(args.names, args.dry_run)
+            except RuntimeError as e:
+                error(f"Failed to add required node: {e}")
+                return
+
+        case "rm" | "remove" | "del" | "delete":
+            try:
+                lab.remove_requirement(args.names, args.dry_run)
+            except RuntimeError as e:
+                error(f"Failed to remove required node: {e}")
+                return
+
+        case "list":
+            requires = lab.config.get("requires_nodes", [])
+            if requires:
+                print("This lab requires:")
+                for n in sorted(requires):
+                    print(f"  - {n}")
+            else:
+                info("No external node requirements declared")
+        case "check":
+            result = run(["incus", "list", "--format=json"], silent=True)
+            containers = json.loads(result.stdout)
+            running = {c["name"] for c in containers if c["status"] == "Running"}
+            missing = [n for n in lab.config.get("requires_nodes", []) if n not in running]
+            if missing:
+                error(f"Required nodes not running: {', '.join(missing)}")
+                sys.exit(1)
+            else:
+                success("All required nodes are running")
+
+def prepare_cmd_up(subparsers):
+    """
+    prepare_cmd_up: prepare parser & subparser for cmd_up
+    """
+    up_p = subparsers.add_parser("up", help="Start all managed nodes within the lab")
+    up_p.add_argument("--only",
+                      help="Only start specific nodes (comma-separated, e.g. web01,db01)")
+    up_p.add_argument("--no-deps", action="store_true",
+                      help="Don't start required_nodes dependencies")
+
+    for subparser in [up_p]:
+        subparser.add_argument(
+            "--dry-run", "-n",
+            action="store_true",
+            help="Show what would be done without applying changes"
+        )
 
 def cmd_up(args):
+    """
+    cmd_up: handles 'up' command
+    """
     current_dir = Path.cwd()
     if not (current_dir / "lab.yaml").exists():
         fatal("This is not a lab directory. Run 'labkit init' first.")
@@ -347,7 +405,7 @@ def cmd_up(args):
 
     try:
         lab = Lab(current_dir)
-    except Exception as e:
+    except RuntimeError as e:
         error(f"Failed to load lab: {e}")
         return
 
@@ -357,11 +415,34 @@ def cmd_up(args):
             include_deps=not args.no_deps,
             dry_run=args.dry_run
         )
-    except Exception as e:
+    except RuntimeError as e:
         error(f"Failed to start-up lab: {e}")
         return
 
+def prepare_cmd_down(subparsers):
+    """
+    prepare_cmd_down: prepare parser & subparser for cmd_down
+    """
+    down_p = subparsers.add_parser("down", help="Stop all managed nodes within the lab")
+    down_p.add_argument("--only",
+                        help="Only stop specific nodes (comma-separated, e.g. web01,db01)")
+    down_p.add_argument("--suspend-required",
+                        help="Suspend all required nodes (currently not implemented)")
+    down_p.add_argument("--force-stop-all",
+                        help="Stop all running nodes (currently not implemented)")
+
+    # In parser setup
+    for subparser in [down_p]:
+        subparser.add_argument(
+            "--dry-run", "-n",
+            action="store_true",
+            help="Show what would be done without applying changes"
+        )
+
 def cmd_down(args):
+    """
+    cmd_down: handles 'down' command
+    """
     current_dir = Path.cwd()
     if not (current_dir / "lab.yaml").exists():
         fatal("This is not a lab directory. Run 'labkit init' first.")
@@ -369,10 +450,10 @@ def cmd_down(args):
 
     try:
         lab = Lab(current_dir)
-    except Exception as e:
+    except RuntimeError as e:
         error(f"Failed to load lab: {e}")
         return
-    
+
     try:
         lab.down(
             only=args.only,
@@ -380,7 +461,15 @@ def cmd_down(args):
             force_stop_all=args.force_stop_all,
             dry_run=args.dry_run
         )
-    except Exception as e:
+    except RuntimeError as e:
         error(f"Failed to shutdown lab: {e}")
         return
-    
+
+def prepare_cmd_template(subparsers):
+    """
+    prepare_cmd_node: prepares parser for subcommand and args for `template`
+    """
+    template_p = subparsers.add_parser("template",
+                                       help="Initialize current directory as a lab")
+    template_sub = template_p.add_subparsers(dest="action", required=True)
+    template_sub.add_parser("list", help="List node templates")

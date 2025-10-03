@@ -37,3 +37,9 @@ labkit = "labkit.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[dependency-groups]
+dev = [
+    "pylint>=3.3.8",
+    "ruff>=0.13.2",
+]

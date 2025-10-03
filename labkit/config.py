@@ -1,4 +1,6 @@
-# labkit/config.py
+"""
+config.py: module for handling homelab configuration 
+"""
 import os
 from pathlib import Path
 import yaml
@@ -21,21 +23,31 @@ DEFAULT_CONFIG = {
 }
 
 class LabConfig:
+    """
+    LabConfig:  class that encapsulate all the data and action for configuring
+                homelab using Incus containers
+    """
     def __init__(self, path: Path):
         self.path = path
         self.data = DEFAULT_CONFIG.copy()
 
     def load(self):
+        """
+        load: loads configuration from default lab.yaml
+        """
         if self.path.exists():
             try:
                 self.data.update(yaml.safe_load(self.path.read_text()))
             except Exception as e:
-                print(f"⚠️ Failed to load lab.yaml: {e}")
+                raise RuntimeError(f"Failed to load lab.yaml: {e}") from e
         else:
             self.save()  # Create default
         return self.data
 
     def save(self):
+        """
+        save: saves configuration to lab.yaml
+        """
         self.path.write_text(
             yaml.dump(self.data, default_flow_style=False, indent=2)
         )

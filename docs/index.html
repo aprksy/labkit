@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-522EH0NMFF"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+
+        gtag('config', 'G-522EH0NMFF');
+    </script>
+
+    <!-- Favicon (optional) -->
+    
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LabKit - Organized Incus Lab Management</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #7c3aed;
+            --primary-dark: #6d28d9;
+            --secondary: #06b6d4;
+            --accent: #10b981;
+            --text: #1f2937;
+            --text-light: #6b7280;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --code-bg: #1e1e1e;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            --gradient: linear-gradient(135deg, var(--primary), var(--secondary));
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background: var(--bg);
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            padding: 4rem 0 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: var(--gradient);
+            opacity: 0.03;
+            z-index: -1;
+            animation: rotate 20s linear infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .logo {
+            display: inline-block;
+            margin-bottom: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .logo:hover {
+            transform: scale(1.05);
+        }
+
+        .logo img {
+            height: 80px;
+            width: auto;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .tagline {
+            font-size: 1.4rem;
+            color: var(--text-light);
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .badges {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--card-bg);
+            border-radius: 50px;
+            text-decoration: none;
+            color: var(--text);
+            font-weight: 500;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .badge:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        /* Sections */
+        section {
+            background: var(--card-bg);
+            margin: 2rem 0;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: var(--gradient);
+        }
+
+        section:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        h2 {
+            font-size: 2.2rem;
+            margin-bottom: 1.5rem;
+            color: var(--text);
+            position: relative;
+            display: inline-block;
+        }
+
+        h2::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 0;
+            width: 60px;
+            height: 3px;
+            background: var(--gradient);
+            border-radius: 2px;
+        }
+
+        /* Features Grid */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .feature-card {
+            background: var(--bg);
+            padding: 2rem;
+            border-radius: 16px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--gradient);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow);
+        }
+
+        .feature-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .feature-card h3 i {
+            color: var(--secondary);
+        }
+
+        /* Code Blocks */
+        pre {
+            background: var(--code-bg);
+            color: #f8f8f2;
+            padding: 1.5rem;
+            border-radius: 12px;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+            position: relative;
+            border: 1px solid #333;
+        }
+
+        code {
+            font-family: 'Fira Code', 'Monaco', 'Cascadia Code', monospace;
+            font-size: 0.9rem;
+        }
+
+        .inline {
+            background-color: #baf5f7;
+            border-radius: 3px;
+            padding: 3px;
+        }
+
+        #editable {
+            background: var(--code-bg);
+            color: #f8f8f2;
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 2px solid transparent;
+            margin: 1.5rem 0;
+            font-family: 'Fira Code', monospace;
+            min-height: 60px;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        #editable:focus {
+            border-color: var(--primary);
+        }
+
+        /* Demo Section */
+        .demo {
+            position: relative;
+            margin: 2rem 0;
+        }
+
+        .run {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .run:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .demo-output {
+            background: var(--bg);
+            border: 2px dashed var(--primary);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1rem;
+            min-height: 80px;
+            font-family: 'Fira Code', monospace;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+        }
+
+        .demo-output.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Lists */
+        ul {
+            list-style: none;
+            margin: 1.5rem 0;
+        }
+
+        li {
+            margin: 1rem 0;
+            padding-left: 2rem;
+            position: relative;
+        }
+
+        li::before {
+            content: '▸';
+            position: absolute;
+            left: 0;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        li strong {
+            color: var(--primary);
+        }
+
+        /* Links */
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            transition: color 0.3s ease;
+            position: relative;
+        }
+
+        a::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--primary);
+            transition: width 0.3s ease;
+        }
+
+        a:hover::after {
+            width: 100%;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 3rem 0;
+            margin-top: 4rem;
+            color: var(--text-light);
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        /* Graph Visualization Demo */
+        .graph-demo {
+            width: 100%;
+            height: 300px;
+            background: var(--bg);
+            border-radius: 12px;
+            margin: 2rem 0;
+            position: relative;
+            overflow: hidden;
+            border: 2px dashed var(--primary);
+        }
+
+        .node {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .node:hover {
+            transform: scale(1.1);
+        }
+
+        .node:nth-child(2) {
+            background: var(--secondary);
+            top: 50px;
+            left: 200px;
+            animation-delay: 0.5s;
+        }
+
+        .node:nth-child(3) {
+            background: var(--accent);
+            top: 150px;
+            left: 100px;
+            animation-delay: 1s;
+        }
+
+        .connection {
+            position: absolute;
+            background: var(--text-light);
+            transform-origin: 0 0;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.5rem;
+            }
+            
+            .tagline {
+                font-size: 1.2rem;
+            }
+            
+            section {
+                padding: 2rem;
+            }
+            
+            .features {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span class="logo">LabKit</span></h1>
+            <p class="tagline">Organized Incus Lab Management</p>
+
+            <div class="badges">
+                <a href="https://github.com/aprksy/labkit" class="badge">
+                    <i class="fab fa-github"></i>
+                    <span>GitHub</span>
+                </a>
+                <!-- <a href="https://github.com/aprksy/knitknot" class="badge">
+                    <img src="https://img.shields.io/badge/coverage-86%25-brightgreen" alt="Coverage">
+                </a> -->
+                <span class="badge">
+                    <i class="fas fa-code"></i>
+                    <span>Python</span>
+                </span>
+                <span class="badge">
+                    <i class="fas fa-box-open"></i>
+                    <span>Incus</span>
+                </span>
+            </div>
+        </header>
+
+        <main>
+            <section>
+                <h2>Problems</h2>
+                <p>I run dozens of Incus containers across multiple development and homelab projects. Over time, I lost track of:</p>
+                <ul>
+                    <li><strong>Which?</strong>: Which container belonged to which project</li>
+                    <li><strong>What?</strong>: What each one was for</li>
+                    <li><strong>How?</strong>: How they were configured</li>
+                    <li><strong>Where?</strong>: Where documentation lived</li>
+                </ul>
+                <p>Documentation was scattered — some in notes, some in READMEs, some nowhere. I’d forget why a container existed, or accidentally break one used by another project.
+                    This chaos led to duplicated work, confusion, and wasted time.</p>
+            </section>
+
+            <section>
+                <h2>Objective</h2>
+                <p>To create a lightweight, Git-integrated system that brings clarity to Incus-based development labs by:</p>
+                <ul>
+                    <li>Structuring projects with self-documenting nodes</li>
+                    <li>Automating setup and teardown</li>
+                    <li>Making dependencies explicit</li>
+                    <li>Ensuring every container carries its purpose</li>
+                </ul>
+                <p>No enforcement — just gentle structure.</p>
+            </section>
+
+            <section>
+                <h2>Design Decision</h2>
+                <ul>
+                    <li>Git as source of truth: Each lab is a repo with docs, manifests, and history.</li>
+                    <li>Convention over control: No strict rules, but helpful scaffolding.</li>
+                    <li>Bidirectional dependency tracking: Labs declare what they need; infrastructure knows who uses it.</li>
+                    <li>Dry-run safe: All destructive commands support <code class="inline">--dry-run</code>.</li>
+                    <li>Extensible hooks: Designed for future plugins and automation.</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Features</h2>
+                <div class="features">
+                    <div class="feature-card">
+                        <h3><i class="fas fa-terminal"></i>node add/rm</h3>
+                        <p>Add/remove Incus container</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3><i class="fas fa-magic"></i>requires add/rm</h3>
+                        <p>Add/remove required external Incus container</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3><i class="fas fa-save"></i>up/down</h3>
+                        <p>Up/down entire or selective nodes</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3><i class="fas fa-save"></i>dry-run</h3>
+                        <p>Dry run capability side effect ops</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3><i class="fas fa-save"></i>Automatic Docs</h3>
+                        <p>Entire labs within a Git repo, with manifest.yaml and README.md for each node</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3><i class="fas fa-save"></i>ssh config</h3>
+                        <p>Auto update host .ssh config when node started/stopped</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3><i class="fas fa-project-diagram"></i>ssh host keys</h3>
+                        <p>Auto generate ssh host keys on first boot</p>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2>Future Plans</h2>
+                <ul>
+                    <li>labkit status – Show running state, IPs, dependencies</li>
+                    <li>labkit doctor – Diagnose missing templates, config issues</li>
+                    <li>Web dashboard – Visual overview of all labs</li>
+                    <li>Integration with reverse proxy (auto-Caddyfile generation)</li>
+                    <li>Support for VMs alongside containers</li>
+                    <li>Template versioning and inheritance</li>
+                    <li>CI/CD mode: ephemeral labs for testing</li>
+                </ul>
+                <p>labkit isn’t about replacing tools — it’s about making them easier to use together.</p>
+            </section>
+
+            <section>
+                <h2>Getting Started</h2>
+                <p>In your labs collection directory:</p>
+                <div id="editable" contenteditable="false">
+                    <div>> # create new project/lab</div>
+                    <div>> labkit new --template base-debian my-gis-project</div>
+                    <div>> cd my-gis-project</div>
+                    <div>> labkit requires add my-osm-tile-server</div>
+                    <div>> labkit node add my-db-server</div>
+                    <div>> labkit node add backend-node</div>
+                    <div>> labkit node add frontend-node</div>
+                    <div>> labkit up</div>
+                    <div>> labkit down</div>
+                </div>
+
+                <p>
+                    I'm currently setting-up a lab for tutorials. When it completes, I would add here as
+                    additional reference. [Coming soon!]
+                </p>
+            </section>
+
+            <section>
+                <h2>Project Status</h2>
+                <p>LabKit is currently being used in my homelabs, in several servers; Yes, home-scale :)</p>
+                <div class="progress-bar" style="background: #e5e7eb; border-radius: 10px; height: 10px; margin: 1rem 0;">
+                    <div style="background: var(--accent); height: 100%; border-radius: 10px; width: 65%;"></div>
+                </div>
+                <ul>
+                    <li><a href="https://github.com/aprksy/labkit/blob/main/docs/CHANGELOG.md">Changelog</a></li>
+                    <li><a href="https://github.com/aprksy/labkit/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Get Involved</h2>
+                <p>LabKit is open-source and welcomes contributions!</p>
+                <div class="features">
+                    <div class="feature-card">
+                        <h3><i class="fas fa-eye"></i> View Source</h3>
+                        <p>Explore the codebase and understand how it works.</p>
+                        <a href="https://github.com/aprksy/labkit">Browse Code →</a>
+                    </div>
+                    <div class="feature-card">
+                        <h3><i class="fas fa-bug"></i> Report Issues</h3>
+                        <p>Found a bug? Let us know!</p>
+                        <a href="https://github.com/aprksy/labkit/issues">Report Bug →</a>
+                    </div>
+                    <div class="feature-card">
+                        <h3><i class="fas fa-hands-helping"></i> Contribute</h3>
+                        <p>Help make LabKit better for everyone.</p>
+                        <a href="https://github.com/aprksy/labkit/blob/main/docs/CONTRIBUTING.md">Contribute →</a>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Made with ❤️ for curious minds. | 
+                <a href="https://github.com/aprksy/labkit">GitHub</a> 
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -469,7 +469,7 @@ class Lab:
 
         # 8. Git commit
         def git_commit():
-            subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+            subprocess.run(["git", "add", "."], cwd=self.root, check=False)
             env = os.environ.copy()
             env.setdefault("GIT_AUTHOR_NAME", "labkit")
             env.setdefault("GIT_COMMITTER_NAME", "labkit")
@@ -527,7 +527,7 @@ class Lab:
 
         # 3. Git commit
         def git_commit():
-            subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+            subprocess.run(["git", "add", "."], cwd=self.root, check=False)
             env = os.environ.copy()
             env.setdefault("GIT_AUTHOR_NAME", "labkit")
             env.setdefault("GIT_COMMITTER_NAME", "labkit")

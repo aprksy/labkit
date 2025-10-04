@@ -10,6 +10,8 @@ from pathlib import Path
 import sys
 import shutil
 import yaml
+import glob
+from labkit.global_config import LabkitConfig
 
 from .utils import container_exists, run, info, success, error, warning, fatal, heading, \
     BOLD, RESET
@@ -46,6 +48,9 @@ def main():
     # labkit down
     prepare_cmd_down(subparsers)
 
+    # labkit config
+    labkit_config = LabkitConfig()
+
     args = parser.parse_args()
     if args.command == "new":
         cmd_new(args)
@@ -72,6 +77,7 @@ def prepare_cmd_new(subparsers):
     new_p = subparsers.add_parser("new", help="Create a new lab in a new directory")
     new_p.add_argument("name", help="Lab/project name")
     new_p.add_argument("--template", help="Override default template for nodes")
+    new_p.add_argument("--allow-scattered", help="Allow lab creation outside default labs root")
     new_p.add_argument("--force", "-f", action="store_true",
                        help="Overwrite existing directory")
 
@@ -79,25 +85,40 @@ def cmd_new(args):
     """
     cmd_new: handles 'new' command
     """
-    project_dir = Path(args.name).absolute()
+    config = LabkitConfig().load()  # Load global config
+    current_dir = Path.cwd()
 
+    if str(current_dir) != str(config.data["default_root"]):
+        # If --allow-scattered, add parent dir to search_paths
+        if getattr(args, "allow_scattered", False):
+            if config.add_search_path(current_dir):
+                config.save()  # Save updated config
+                print(f"Added '{current_dir}' to lab search paths")
+            else:
+                print(f"'{current_dir}' already in search paths")
+        else:
+            error("Cannot create lab outside the default root.")
+            info("If this is intentional, use flag --allow-scattered.")
+            return
+
+    check_passed = True
+    project_dir = Path(args.name).absolute()
     if project_dir.exists():
         if not args.force:
             warning(f"Directory '{project_dir}' already exists. Use --force to overwrite.")
             return
         shutil.rmtree(project_dir)
 
-    project_dir.mkdir(parents=True, exist_ok=args.force)
+    project_dir.mkdir(parents=True, exist_ok=True)
     os.chdir(project_dir)
-
     info(f"Created and entered directory: {project_dir}")
 
-    # Reuse init logic
+    # Run init logic
     cmd_init(argparse.Namespace(
         command="init",
         name=args.name,
-        template=args.template or "golden-base"
-    ))
+        template=args.template or config.data["default_template"]
+    ), check_passed)
 
 def prepare_cmd_init(subparsers):
     """
@@ -107,16 +128,30 @@ def prepare_cmd_init(subparsers):
     help="Initialize current directory as a lab")
     init_p.add_argument("--name", type=str, help="Lab name")
     init_p.add_argument("--template", help="Set default node template")
+    init_p.add_argument("--allow-scattered", help="Allow lab creation outside default labs root")
 
-def cmd_init(args):
+def cmd_init(args, check_passed=False):
     """
     cmd_init: handles 'init' command
     """
     current_dir = Path.cwd()
+    config = LabkitConfig().load()
 
     if (current_dir / "lab.yaml").exists():
         warning("This directory is already a lab (lab.yaml exists). Skipping init.")
         return
+    
+    if not check_passed:
+        if str(current_dir.parent) != str(config.data["default_root"]):
+            if getattr(args, "allow_scattered", False):
+                parent_dir = current_dir.parent
+                if config.add_search_path(parent_dir):
+                    config.save()
+                    print(f"Added '{parent_dir}' to global search paths")
+            else:
+                error("Cannot create lab outside the default root.")
+                info("If this is intentional, use flag --allow-scattered.")
+                return
 
     # Determine lab name
     lab_name = args.name or current_dir.name
@@ -137,7 +172,6 @@ def cmd_init(args):
         "managed_by: labkit\n"
     )
 
-    # from .utils import success
     success(f"Initialized empty lab '{lab_name}'")
 
 def prepare_cmd_node(subparsers):
@@ -203,59 +237,55 @@ def cmd_list(args):
     cmd_list: handles 'list' command
     """
 
-    # Determine search path
-    search_path_str = args.path or os.path.expanduser("~/workspace/labs")
-    search_path = Path(search_path_str)
-
-    if not search_path.is_dir():
-        fatal(f"Search path not found: {search_path}")
-        return
-
+    config = LabkitConfig().load()
     labs = []
+    seen_paths = set()
 
-    # Walk directories looking for lab.yaml
-    for item in search_path.iterdir():
-        if not item.is_dir():
-            continue
-        lab_yaml = item / "lab.yaml"
-        if not lab_yaml.exists():
+    for base_path in config.data["search_paths"]:
+        if not base_path.exists():
             continue
 
-        try:
-            config = yaml.safe_load(lab_yaml.read_text()) or {}
-            name = config.get("name") or item.name
+        # Support glob patterns like */projects
+        candidates = (
+            [base_path] if "*" not in str(base_path) else
+            glob.glob(str(base_path))
+        )
 
-            # Count nodes
-            nodes_dir = item / "nodes"
-            node_count = len([d for d in nodes_dir.iterdir() if d.is_dir()]) \
-                if nodes_dir.exists() else 0
+        for candidate in candidates:
+            parent_dir = [entry.path for entry in os.scandir(candidate) if entry.is_dir()]
+            for p in parent_dir:
+                p = Path(p)
+                if not p.is_dir():
+                    continue
+                if p in seen_paths:
+                    continue
+                
+                seen_paths.add(p)
+                lab_yaml = p / "lab.yaml"
+                if lab_yaml.exists():
+                    try:
+                        data = yaml.safe_load(lab_yaml.read_text()) or {}
+                        name = data.get("name") or p.name
+                        # Count nodes
+                        nodes_dir = p / "nodes"
+                        node_count = len([d for d in nodes_dir.iterdir() if d.is_dir()]) \
+                        if nodes_dir.exists() else 0
+                        mtime = lab_yaml.stat().st_mtime
+                        labs.append({
+                            "name": name,
+                            "nodes": node_count,
+                            "mtime": mtime,
+                            "path": p,
+                            "template": data.get("template", "unknown"),
+                        })
+                    except Exception as e:
+                        print(f"Failed to read {p}: {e}")
 
-            template = config.get("template", "unknown")
-            mtime = datetime.fromtimestamp(lab_yaml.stat().st_mtime)
-            relative_path = f"~/{item.relative_to(Path.home())}" \
-                if item.is_relative_to(Path.home()) else str(item)
-
-            labs.append({
-                "name": name,
-                "nodes": node_count,
-                "template": template,
-                "mtime": mtime,
-                "path": relative_path,
-                "full_path": item,
-            })
-        except RuntimeError as e:
-            error(f"Failed to read lab {item}: {e}")
-
-    if not labs:
-        error(f"No labs found in {search_path}")
-        info("Create one with: labkit new <project-name>")
-        return
-
-    # Sort by modification time (newest first)
+    # Sort by mtime
     labs.sort(key=lambda x: x["mtime"], reverse=True)
 
     if args.format == "json":
-        print(json.dumps(labs, indent=2, default=str))
+        print(json.dumps(labs, default=str, indent=2))
     else:
         _print_table(labs)
 
@@ -264,14 +294,14 @@ def _print_table(labs):
     _print_table: print in table format
     """
 
-    heading("\nLabs found:\n")
+    heading(f"Labs found: {len(labs)}")
 
     headers = ["NAME", "NODES", "TEMPLATE", "LAST MODIFIED", "PATH"]
     rows = []
     now = datetime.now()
 
     def _ago(dt):
-        diff = now - dt
+        diff = now - datetime.fromtimestamp(dt)
         if diff.days > 0:
             return f"{diff.days}d ago"
         if diff.seconds > 3600:
@@ -286,18 +316,20 @@ def _print_table(labs):
             str(lab["nodes"]),
             lab["template"],
             _ago(lab["mtime"]),
-            lab["path"]
+            str(lab["path"])
         ])
 
     # Calculate max width for each column
     col_widths = [len(h) for h in headers]
+    total_width = 0
     for row in rows:
         for i, cell in enumerate(row):
-            col_widths[i] = max(col_widths[i], len(cell))
+            col_widths[i] = max(col_widths[i], len(str(cell)))
+            total_width += col_widths[i]
 
     # Format and print
     fmt = "  ".join(f"{{:<{w}}}" for w in col_widths)
-    print(fmt.format(*[BOLD + h + RESET for h in headers]))
+    print(BOLD + fmt.format(*[h for h in headers]) + RESET)
     for row in rows:
         print(fmt.format(*row))
 

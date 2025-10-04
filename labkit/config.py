@@ -4,7 +4,6 @@ config.py: module for handling homelab configuration
 import os
 from pathlib import Path
 import yaml
-import dotenv
 
 # Define non-direct user-needs here, override will come from cmd args
 DEFAULT_LAB_CONFIG = {
@@ -53,22 +52,3 @@ class LabConfig:
         self.path.write_text(
             yaml.dump(self.data, default_flow_style=False, indent=2)
         )
-
-# Define labkit global config. Override will come from .env
-DEFAULT_LABKIT_CONFIG = {
-    "labs_root": f"/home/{os.getenv("USER")}/labs",
-    "ssh_config_filename": "labkit_ssh_config",
-    "default_template": "golden-image",
-}
-
-class LabkitConfig:
-    """
-    LabkitConfig: a class to encapsulate configurations for labkit 
-    """
-    def __init__(self):
-        dotenv.load_dotenv()
-        self.data = DEFAULT_LABKIT_CONFIG.copy()
-        self.data["labs_root"] = os.getenv("LABKIT_LABS_ROOT", self.data["labs_root"])
-        self.data["ssh_config_filename"] = os.getenv("LABKIT_SSH_CONFIG", self.data["ssh_config_filename"])
-        self.data["default_template"] = os.getenv("LABKIT_DEFAULT_TEMPLATE", self.data["default_template"])
-

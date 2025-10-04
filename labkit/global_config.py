@@ -1,13 +1,16 @@
+"""
+global_config.py purpose is to provide global configuration handler for labkit
+"""
 import os
 from pathlib import Path
 import yaml
 
-# default_root = str(Path.home() / "workspace" / "labs")
-default_root = "/home/aprksy/workspace/repo/git/project-labs/labs"
+# DEFAULT_ROOT = str(Path.home() / "workspace" / "labs")
+DEFAULT_ROOT = "/home/aprksy/workspace/repo/git/project-labs/labs"
 DEFAULT_CONFIG = {
-    "default_root": default_root,
+    "default_root": DEFAULT_ROOT,
     "search_paths": [
-        default_root,
+        DEFAULT_ROOT,
     ],
     "default_template": "golden-arch",
     "user": os.getenv("USER", "unknown"),
@@ -18,6 +21,10 @@ CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 
 class LabkitConfig:
+    """
+    LabkitConfig: class that encapsulate all the data and action for configuring
+    labkit app globally
+    """
     def __init__(self):
         self.data = DEFAULT_CONFIG.copy()
 

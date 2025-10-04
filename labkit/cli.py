@@ -9,8 +9,8 @@ import os
 from pathlib import Path
 import sys
 import shutil
-import yaml
 import glob
+import yaml
 from labkit.global_config import LabkitConfig
 
 from .utils import container_exists, run, info, success, error, warning, fatal, heading, \
@@ -47,9 +47,6 @@ def main():
 
     # labkit down
     prepare_cmd_down(subparsers)
-
-    # labkit config
-    labkit_config = LabkitConfig()
 
     args = parser.parse_args()
     if args.command == "new":
@@ -140,7 +137,7 @@ def cmd_init(args, check_passed=False):
     if (current_dir / "lab.yaml").exists():
         warning("This directory is already a lab (lab.yaml exists). Skipping init.")
         return
-    
+
     if not check_passed:
         if str(current_dir.parent) != str(config.data["default_root"]):
             if getattr(args, "allow_scattered", False):
@@ -242,7 +239,7 @@ def cmd_list(args):
     seen_paths = set()
 
     for base_path in config.data["search_paths"]:
-        if not base_path.exists():
+        if base_path != "":
             continue
 
         # Support glob patterns like */projects
@@ -259,7 +256,7 @@ def cmd_list(args):
                     continue
                 if p in seen_paths:
                     continue
-                
+
                 seen_paths.add(p)
                 lab_yaml = p / "lab.yaml"
                 if lab_yaml.exists():

@@ -54,7 +54,7 @@ labkit requires check
 # All required nodes are running
 
 # SSH into a node (via your incus SSH config)
-ssh aprksy@web01
+ssh web01
 ```
 Inside any container:
 ```shell

@@ -1,3 +1,4 @@
+![Pylint](https://img.shields.io/badge/pylint-10.0/10-brightgreen)
 # labkit
 
 > Lightweight homelab management for Incus containers (Linux-only)

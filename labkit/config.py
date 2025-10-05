@@ -5,7 +5,8 @@ import os
 from pathlib import Path
 import yaml
 
-DEFAULT_CONFIG = {
+# Define non-direct user-needs here, override will come from cmd args
+DEFAULT_LAB_CONFIG = {
     "name": "unnamed-lab",
     "template": "golden-image",
     "network_mode": "shared",  # 'shared' or later 'isolated'
@@ -24,12 +25,12 @@ DEFAULT_CONFIG = {
 
 class LabConfig:
     """
-    LabConfig:  class that encapsulate all the data and action for configuring
-                homelab using Incus containers
+    LabConfig: class that encapsulate all the data and action for configuring
+    homelab using Incus containers
     """
     def __init__(self, path: Path):
         self.path = path
-        self.data = DEFAULT_CONFIG.copy()
+        self.data = DEFAULT_LAB_CONFIG.copy()
 
     def load(self):
         """

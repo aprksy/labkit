@@ -279,6 +279,39 @@ class Lab:
 
         self._describe_and_apply(actions, dry_run)
 
+    def _process_only_flag(self, target, local_nodes, running_nodes, to_stop):
+        if target:
+            target_nodes = [n.strip() for n in target.split(",") if n.strip()]
+            info(f"Target nodes: {', '.join(target_nodes)}")
+            for name in target_nodes:
+                if name not in local_nodes:
+                    warning(f"Node '{name}' not found in nodes/ — skipping")
+                elif name in running_nodes:
+                    to_stop.append(name)
+                else:
+                    info(f"Node '{name}' already stopped")
+        else:
+            # Stop all running local nodes
+            to_stop = [n for n in local_nodes if n in running_nodes]
+
+    def _process_to_stop(self, suspend_req, running_nodes, stop_all, to_stop):
+        if suspend_req:
+            required_nodes = self.config.get("requires_nodes", [])
+            for name in required_nodes:
+                if name not in running_nodes:
+                    continue  # already stopped
+                if not stop_all:
+                    # Check if pinned
+                    pin_result = run(
+                        ["incus", "config", "get", name, "user.pinned"],
+                        silent=True, check=False
+                    )
+                    if pin_result.returncode == 0 and pin_result.stdout.strip() == "true":
+                        info(f"Skipping {name}: user.pinned=true")
+                        continue
+                    # Future: refcount check via user.required_by
+                to_stop.append(name)
+
     def down(self, only=None, suspend_required=False, force_stop_all=False, dry_run=False):
         """
         down: bring down the lab, stop Incus containers
@@ -292,38 +325,14 @@ class Lab:
         local_node_dirs = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
         local_to_stop = []
 
-        if only:
-            target_nodes = [n.strip() for n in only.split(",") if n.strip()]
-            info(f"Target nodes: {', '.join(target_nodes)}")
-            for name in target_nodes:
-                if name not in local_node_dirs:
-                    warning(f"Node '{name}' not found in nodes/ — skipping")
-                elif name in running_names:
-                    local_to_stop.append(name)
-                else:
-                    info(f"Node '{name}' already stopped")
-        else:
-            # Stop all running local nodes
-            local_to_stop = [n for n in local_node_dirs if n in running_names]
+        if only and (force_stop_all or suspend_required):
+            error("Cannot use '--force-stop-all' and/or '--suspend-required' with '--only'")
+            return
+        self._process_only_flag(only, local_node_dirs, running_names, local_to_stop)
 
         # Determine required nodes to suspend
         required_to_suspend = []
-        if suspend_required:
-            required_nodes = self.config.get("requires_nodes", [])
-            for name in required_nodes:
-                if name not in running_names:
-                    continue  # already stopped
-                if not force_stop_all:
-                    # Check if pinned
-                    pin_result = run(
-                        ["incus", "config", "get", name, "user.pinned"],
-                        silent=True, check=False
-                    )
-                    if pin_result.returncode == 0 and pin_result.stdout.strip() == "true":
-                        info(f"Skipping {name}: user.pinned=true")
-                        continue
-                    # Future: refcount check via user.required_by
-                required_to_suspend.append(name)
+        self._process_to_stop(suspend_required, running_names, force_stop_all, required_to_suspend)
 
         # Build actions
         actions = []

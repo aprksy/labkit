@@ -41,7 +41,7 @@ class LabkitConfig:
                     if k != "search_paths"
                 })
             except Exception as e:
-                print(f"Failed to load {CONFIG_FILE}: {e}")
+                raise RuntimeError(f"Failed to load {CONFIG_FILE}: {e}") from e
 
         # Apply .env overrides
         self._apply_env_overrides()

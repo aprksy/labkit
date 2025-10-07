@@ -337,7 +337,6 @@ class Lab:
         # Build actions
         actions = []
 
-        print(f"local_to_stop = {local_to_stop}")
         # Stop local nodes
         for name in local_to_stop:
             actions.append({

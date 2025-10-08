@@ -211,7 +211,7 @@ class Lab:
         up: bring up the lab, starting Incus containers
         """
         # Parse --only into list
-        target_nodes = None
+        target_nodes = []
         if only:
             target_nodes = [n.strip() for n in only.split(",") if n.strip()]
             info(f"Target nodes: {', '.join(target_nodes)}")
@@ -372,7 +372,7 @@ class Lab:
 
         self._describe_and_apply(actions, dry_run)
 
-    def add_node(self, name: str, template: str = None, dry_run: bool = False):
+    def add_node(self, name: str, template: str | None = None, dry_run: bool = False):
         """
         add_node: adds a new node into the lab
         """
@@ -396,6 +396,14 @@ class Lab:
             "desc": f"Create container '{name}' from '{effective_template}'",
             "func": run,
             "args": (["incus", "copy", effective_template, name],),
+            "kwargs": {"check": True}
+        })
+
+        # 1a. Create container
+        actions.append({
+            "desc": f"Unset inherited template marker on '{name}'",
+            "func": run,
+            "args": (["incus", "config", "unset", name, "user.template"],),
             "kwargs": {"check": True}
         })
 
@@ -577,7 +585,7 @@ class Lab:
             yaml.dump(data, indent=2, default_flow_style=False)
         )
 
-    def get_container_state(self, name: str) -> str:
+    def get_container_state(self, name: str) -> str | None:
         """
         get_container_state: return container status: 'Running', 'Stopped', 
         or None if not found

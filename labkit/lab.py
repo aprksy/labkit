@@ -259,7 +259,7 @@ class Lab:
             actions.append({
                 "desc": f"Start local node: {name}",
                 "func": run,
-                "args": (["incus", "start", f"{self.config['name']}-{name}"],),
+                "args": (["incus", "start", name],),
                 "kwargs": {"check": True}
             })
 
@@ -295,7 +295,7 @@ class Lab:
                     info(f"Node '{name}' already stopped")
         else:
             # Stop all running local nodes
-            to_stop.extend([n for n in local_nodes if n in running_nodes])
+            to_stop.extend([f"{self.config['name']}-{n}" for n in local_nodes if f"{self.config['name']}-{n}" in running_nodes])
 
     def _process_to_stop(self, suspend_req, running_nodes, stop_all, to_stop):
         if suspend_req:
@@ -345,7 +345,7 @@ class Lab:
             actions.append({
                 "desc": f"Stop local node: {name}",
                 "func": run,
-                "args": (["incus", "stop", f"{self.config['name']}-{name}"],),
+                "args": (["incus", "stop", name],),
                 "kwargs": {"check": True}
             })
 

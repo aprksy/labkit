@@ -227,13 +227,14 @@ class Lab:
 
         if only:
             for name in target_nodes:
+                target_name = f"{self.config['name']}-{name}"
                 if name not in local_node_dirs:
                     warning(f"Node '{name}' not found in nodes/ — skipping")
-                elif name not in running_names:
+                elif target_name not in running_names:
                     local_to_start.append(name)
         else:
             # Start all local nodes that aren't running
-            local_to_start = [n for n in local_node_dirs if n not in running_names]
+            local_to_start = [f"{self.config['name']}-{n}" for n in local_node_dirs if f"{self.config['name']}-{n}" not in running_names]
 
         # Determine required nodes to start
         required_to_start = []
@@ -284,15 +285,17 @@ class Lab:
             target_nodes = [n.strip() for n in target.split(",") if n.strip()]
             info(f"Target nodes: {', '.join(target_nodes)}")
             for name in target_nodes:
+                # compare non-namespaced container name
                 if name not in local_nodes:
                     warning(f"Node '{name}' not found in nodes/ — skipping")
-                elif name in running_nodes:
+                # compare namespaced container name because taken from Incus
+                elif f"{self.config['name']}-{name}" in running_nodes:
                     to_stop.append(name)
                 else:
                     info(f"Node '{name}' already stopped")
         else:
             # Stop all running local nodes
-            to_stop.extend([n for n in local_nodes if n in running_nodes])
+            to_stop.extend([f"{self.config['name']}-{n}" for n in local_nodes if f"{self.config['name']}-{n}" in running_nodes])
 
     def _process_to_stop(self, suspend_req, running_nodes, stop_all, to_stop):
         if suspend_req:
@@ -378,12 +381,14 @@ class Lab:
         """
         # Resolve template
         effective_template = template or self.config["template"]
+        container_name = f"{self.config['name']}-{name}"
+        info(f"Using scoped name: {container_name}")
 
         # Validate upfront
         if not container_exists(effective_template):
             raise RuntimeError(f"Template '{effective_template}' not found")
-        if container_exists(name):
-            raise RuntimeError(f"Container '{name}' already exists")
+        if container_exists(container_name):
+            raise RuntimeError(f"Container '{container_name}' already exists")
 
         node_dir = self.nodes_dir / name
         mount_point = self.config["node_mount"]["mount_point"]
@@ -393,17 +398,17 @@ class Lab:
 
         # 1. Create container
         actions.append({
-            "desc": f"Create container '{name}' from '{effective_template}'",
+            "desc": f"Create container '{container_name}' from '{effective_template}'",
             "func": run,
-            "args": (["incus", "copy", effective_template, name],),
+            "args": (["incus", "copy", effective_template, container_name],),
             "kwargs": {"check": True}
         })
 
         # 1a. Create container
         actions.append({
-            "desc": f"Unset inherited template marker on '{name}'",
+            "desc": f"Unset inherited template marker on '{container_name}'",
             "func": run,
-            "args": (["incus", "config", "unset", name, "user.template"],),
+            "args": (["incus", "config", "unset", container_name, "user.template"],),
             "kwargs": {"check": True}
         })
 
@@ -451,7 +456,7 @@ class Lab:
             "func": run,
             "args": ([
                 "incus", "config", "device", "add",
-                name, "lab-node", "disk", "shift=true",
+                container_name, "lab-node", "disk", "shift=true",
                 f"path={mount_point}",
                 f"source={node_dir}"
             ],),
@@ -465,7 +470,7 @@ class Lab:
                 "func": run,
                 "args": ([
                     "incus", "config", "device", "add",
-                    name, "lab-shared", "disk", "shift=true",
+                    container_name, "lab-shared", "disk", "shift=true",
                     f"path={shared_mp}",
                     f"source={self.shared_dir}"
                 ],),
@@ -474,10 +479,10 @@ class Lab:
 
         # 7. Set labels
         actions.append({
-            "desc": f"Set labels on {name}",
+            "desc": f"Set labels on {container_name}",
             "func": run,
             "args": ([
-                "incus", "config", "set", name,
+                "incus", "config", "set", container_name,
                 f"user.lab={self.config['name']}",
                 "user.managed-by=labkit"
             ],),
@@ -508,13 +513,14 @@ class Lab:
         """
         remove_node: removes a node from the lab
         """
-        state = self.get_container_state(name)
+        container_name = f"{self.config['name']}-{name}"
+        state = self.get_container_state(container_name)
         if not state:
-            warning(f"Container '{name}' not found")
+            warning(f"Container '{container_name}' not found")
             return
 
         if state == "Running" and not force:
-            warning(f"'{name}' is running. Use --force to stop and delete.")
+            warning(f"'{container_name}' is running. Use --force to stop and delete.")
             return
 
         actions = []
@@ -522,17 +528,17 @@ class Lab:
         # 1. Stop container
         if state == "Running":
             actions.append({
-                "desc": f"Stop container: {name}",
+                "desc": f"Stop container: {container_name}",
                 "func": run,
-                "args": (["incus", "stop", name],),
+                "args": (["incus", "stop", container_name],),
                 "kwargs": {"check": True}
             })
 
         # 2. Delete container
         actions.append({
-            "desc": f"Delete container: {name}",
+            "desc": f"Delete container: {container_name}",
             "func": run,
-            "args": (["incus", "delete", name],),
+            "args": (["incus", "delete", container_name],),
             "kwargs": {"check": True}
         })
 
@@ -590,13 +596,14 @@ class Lab:
         get_container_state: return container status: 'Running', 'Stopped', 
         or None if not found
         """
-        result = run(["incus", "list", name, "--format=json"], silent=True, check=False)
+        container_name = f"{self.config['name']}-{name}"
+        result = run(["incus", "list", container_name, "--format=json"], silent=True, check=False)
         if result.returncode != 0:
             return None
         try:
             data = json.loads(result.stdout)
             for c in data:
-                if c["name"] == name:
+                if c["name"] == container_name:
                     return c["status"]
             return None
         except Exception as e:

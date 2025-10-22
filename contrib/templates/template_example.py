@@ -23,9 +23,9 @@ def handle_event(event):
         return
 
     name = metadata.get("name", "unknown")
-    logger.info(f"🎯 Example plugin triggered by {action} on {name}")
+    logger.info(f"Example plugin triggered by {action} on {name}")
 
-    # ✅ Your custom logic here
+    # Your custom logic here
     # - exec shell commands
     # - update files
     # - send notifications

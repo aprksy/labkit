@@ -1,4 +1,4 @@
-![Pylint](https://img.shields.io/badge/pylint-10.0/10-brightgreen)
+![Pylint](https://img.shields.io/badge/pylint-9.85/10-brightgreen)
 # labkit
 
 > Lightweight homelab management for Incus containers (Linux-only)
@@ -6,6 +6,10 @@
 `labkit` helps you organize container-based development labs with **built-in documentation**, **dependency tracking**, and **safe automation** — all version-controlled via Git.
 
 Think of it as a **developer-first environment orchestrator**: simple to use, easy to adopt, and designed for clarity without enforcement.
+
+## Breaking Changes
+
+As this release now supports container namespace, it will have incompatibility issues with labs that was created using earlier versions. However, we will `migrate` subcommand to detect and migrate existing labs to use namespace.
 
 ---
 

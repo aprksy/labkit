@@ -230,75 +230,99 @@ def prepare_cmd_list(subparsers):
     list_p.add_argument("--path", type=str, help="Search path (default: ~/workspace/labs)")
     list_p.add_argument("--format", choices=["table", "json"], default="table",
                         help="Output format")
+    list_p.add_argument("--running", action="store_true",
+                        help="Only show labs with at least one local node running")
 
-def _process_root(root, labs, seen):
+def _process_root(root, labs, container_map, seen_paths):
     parent_dir = [entry.path for entry in os.scandir(root) if entry.is_dir()]
     for p in parent_dir:
         p = Path(p)
-        if not p.is_dir():
-            continue
-        if p in seen:
+        if not p.is_dir() or p in seen_paths:
             continue
 
-        seen.add(p)
+        seen_paths.add(p)
         lab_yaml = p / "lab.yaml"
-        if lab_yaml.exists():
-            try:
-                data = yaml.safe_load(lab_yaml.read_text()) or {}
-                name = data.get("name") or p.name
-                # Count nodes
-                nodes_dir = p / "nodes"
-                node_count = len([d for d in nodes_dir.iterdir() if d.is_dir()]) \
-                if nodes_dir.exists() else 0
-                mtime = lab_yaml.stat().st_mtime
-                labs.append({
-                    "name": name,
-                    "nodes": node_count,
-                    "mtime": mtime,
-                    "path": p,
-                    "template": data.get("template", "unknown"),
-                })
-            except Exception as e:
-                raise RuntimeError(f"Failed to read {p}: {e}") from e
+
+        if not lab_yaml.exists():
+            continue
+
+        try:
+            data = yaml.safe_load(lab_yaml.read_text()) or {}
+            lab_name = data.get("name") or p.name
+            template = data.get("template", "unknown")
+            mtime = lab_yaml.stat().st_mtime
+
+            # Get local node names (from nodes/ subdirs)
+            nodes_dir = p / "nodes"
+            local_node_names = []
+            if nodes_dir.exists():
+                local_node_names = [
+                    f"{lab_name}-{d.name}" for d in nodes_dir.iterdir() if d.is_dir()
+                ]
+
+            # Count how many are running
+            running_count = sum(
+                1 for name in local_node_names
+                if container_map.get(name) == "Running"
+            )
+            has_running = running_count > 0
+
+            labs.append({
+                "name": lab_name,
+                "path": p,
+                "mtime": mtime,
+                "template": template,
+                "local_nodes": len(local_node_names),
+                "running_count": running_count,
+                "has_running": has_running,
+            })
+        except Exception as e:
+            warning(f"Failed to read {p}: {e}")
 
 def cmd_list(args):
-    """
-    cmd_list: handles 'list' command
-    """
+    from .global_config import LabkitConfig
+    from pathlib import Path
+    import json
 
     config = LabkitConfig().load()
+
+    # Fetch all containers once
+    try:
+        result = run(["incus", "list", "--format=json"], check=True, silent=True)
+        all_containers = json.loads(result.stdout)
+        container_map = {c["name"]: c["status"] for c in all_containers}
+    except Exception as e:
+        error(f"Failed to query Incus: {e}")
+        return
+
     labs = []
     seen_paths = set()
 
     for base_path in config.data["search_paths"]:
-        if str(base_path) == "":
+        if not base_path.exists():
             continue
-
-        # Support glob patterns like */projects
-        candidates = (
-            [base_path] if "*" not in str(base_path) else
-            glob.glob(str(base_path))
-        )
-
+        import glob
+        candidates = ([base_path] if "*" not in str(base_path) else glob.glob(str(base_path)))
         for candidate in candidates:
-            _process_root(candidate, labs, seen_paths)
+            _process_root(candidate, labs, container_map, seen_paths)
 
     # Sort by mtime
     labs.sort(key=lambda x: x["mtime"], reverse=True)
 
+    # Filter: only show labs with running nodes?
+    if getattr(args, "running", False):
+        labs = [l for l in labs if l["has_running"]]
+
     if args.format == "json":
-        print(json.dumps(labs, default=str, indent=2))
+        import json as std_json
+        print(std_json.dumps(labs, default=str, indent=2))
     else:
         _print_table(labs)
 
+
 def _print_table(labs):
-    """
-    _print_table: print in table format
-    """
-
-    heading(f"Labs found: {len(labs)}")
-
-    headers = ["NAME", "NODES", "TEMPLATE", "LAST MODIFIED", "PATH"]
+    from .utils import BOLD, RESET
+    headers = ["NAME", "NODES", "LOCAL UP", "RUNNING", "TEMPLATE", "LAST MODIFIED", "PATH"]
     rows = []
     now = datetime.now()
 
@@ -306,19 +330,22 @@ def _print_table(labs):
         diff = now - datetime.fromtimestamp(dt)
         if diff.days > 0:
             return f"{diff.days}d ago"
-        if diff.seconds > 3600:
+        elif diff.seconds > 3600:
             return f"{diff.seconds//3600}h ago"
-        if diff.seconds > 60:
+        elif diff.seconds > 60:
             return f"{diff.seconds//60}m ago"
-        return "now"
+        else:
+            return "now"
 
     for lab in labs:
         rows.append([
             lab["name"],
-            str(lab["nodes"]),
+            str(lab["local_nodes"]),
+            str(lab["running_count"]),
+            "yes" if lab["has_running"] else "no",
             lab["template"],
             _ago(lab["mtime"]),
-            str(lab["path"])
+            f"~/{lab['path'].relative_to(Path.home())}" if lab['path'].is_relative_to(Path.home()) else str(lab['path'])
         ])
 
     # Calculate max width for each column

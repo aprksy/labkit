@@ -1,4 +1,4 @@
-![Pylint](https://img.shields.io/badge/pylint-9.85/10-brightgreen)
+![Pylint](https://img.shields.io/badge/pylint-9.79/10-brightgreen)
 # labkit
 
 > Lightweight homelab management for Incus containers (Linux-only)
@@ -228,6 +228,13 @@ Or override during commands:
 ```shell
 labkit node add api01 --template golden-api
 ```
+
+## Future Plan (not ordered)
+- [ ] Stray container adoption mechanism
+- [ ] Update pkgs inside template containers
+- [ ] Container template with GUI support
+- [ ] Container/Image sharing
+- [ ] Web Dashboard
 
 ## License
 MIT

@@ -73,6 +73,12 @@ def warning(msg):
     """
     print(f"{YELLOW}[WARNING] {msg}{RESET}")
 
+def confirm(msg):
+    """
+    warning: prints message with formatting for CONFIRM
+    """
+    print(f"{YELLOW}[WARNING] {msg}{RESET}")
+
 def error(msg):
     """
     error: prints message with formatting for FAILED/ERROR event

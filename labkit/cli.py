@@ -49,6 +49,9 @@ def main():
     # labkit down
     prepare_cmd_down(subparsers)
 
+    # labkit migrate
+    prepare_cmd_migrate(subparsers)
+
     args = parser.parse_args()
     if args.command == "new":
         cmd_new(args)
@@ -64,6 +67,8 @@ def main():
         cmd_up(args)
     elif args.command == "down":
         cmd_down(args)
+    elif args.command == "migrate":
+        cmd_migrate(args)
     elif args.command == "template":
         if args.action == "list":
             list_templates()
@@ -317,7 +322,6 @@ def cmd_list(args):
     else:
         _print_table(labs)
 
-
 def _print_table(labs):
     headers = ["NAME", "NODES", "LOCAL UP", "RUNNING", "TEMPLATE", "LAST MODIFIED", "PATH"]
     rows = []
@@ -525,6 +529,127 @@ def cmd_down(args):
     except RuntimeError as e:
         error(f"Failed to shutdown lab: {e}")
         return
+
+def prepare_cmd_migrate(subparsers):
+    """
+    prepare_cmd_migrate: prepare parser & subparser for cmd_migrate
+    """
+    migrate_p = subparsers.add_parser("migrate", help="Migrate labs to use scoped container names")
+    migrate_p.add_argument(
+        "--dry-run", "-n",
+        action="store_true",
+        help="Show what would be done without applying changes"
+    )
+    migrate_p.add_argument(
+        "--force",
+        action="store_true",
+        help="Apply changes without confirmation"
+    )
+
+def cmd_migrate(args):
+    """
+    cmd_migrate: handles 'migrate' command
+    """
+    config = LabkitConfig().load()
+    all_containers_result = run(
+        ["incus", "list", "--format=json"],
+        silent=True, check=True,
+    )
+    all_container_names = {c["name"] for c in json.loads(all_containers_result.stdout)}
+
+    migrated_count = 0
+    actions = []
+
+    for base_path in config.data["search_paths"]:
+        candidates = [base_path] if "*" not in str(base_path) else glob.glob(str(base_path))
+        for p in candidates:
+            p = Path(p)
+            lab_dirs = [child for child in p.iterdir() if child.is_dir()]
+            for lab_dir in lab_dirs:
+                lab_yaml = lab_dir / "lab.yaml"
+                if not lab_yaml.exists():
+                    continue
+
+                try:
+                    data = yaml.safe_load(lab_yaml.read_text()) or {}
+                    lab_name = data.get("name") or lab_dir.name
+                    nodes_dir = lab_dir / "nodes"
+                    if not nodes_dir.exists():
+                        continue
+
+                    # Get expected node names
+                    node_basenames = [d.name for d in nodes_dir.iterdir() if d.is_dir()]
+
+                    for basename in node_basenames:
+                        unscoped_name = basename
+                        scoped_name = f"{lab_name}-{basename}"
+
+                        has_unscoped = unscoped_name in all_container_names
+                        has_scoped = scoped_name in all_container_names
+
+                        if has_scoped and not has_unscoped:
+                            # Already migrated
+                            continue
+                        
+                        if has_unscoped and not has_scoped:
+                            # Needs migration
+                            actions.append({
+                                "lab": lab_name,
+                                "path": lab_dir,
+                                "unscoped": unscoped_name,
+                                "scoped": scoped_name,
+                                "func": _rename_container,
+                                "args": (unscoped_name, scoped_name),
+                                "desc": f"Rename container: {unscoped_name} → {scoped_name}"
+                            })
+                        elif has_unscoped and has_scoped:
+                            warning(f"Conflict: both {unscoped_name} and {scoped_name} exist. Skip lab: {lab_name}")
+                            break  # skip entire lab
+                        # else: neither exists — ignore
+
+                except Exception as e:
+                    warning(f"Failed to process {p}: {e}")
+
+    # Show plan
+    if not actions:
+        success("All labs are already using scoped container names")
+        return
+
+    info(f"Found {len(actions)} containers to migrate:")
+    for act in actions:
+        print(f"  {act['desc']}")
+
+    if args.dry_run:
+        info("DRY RUN: No changes applied")
+        return
+
+    if not args.force:
+        if not confirm("Apply migration?"):
+            return
+
+    # Execute
+    for act in actions:
+        try:
+            act["func"](*act["args"])
+            migrated_count += 1
+        except Exception as e:
+            warning(f"Failed to migrate {act['unscoped']}: {e}")
+
+    if migrated_count:
+        success(f"Successfully migrated {migrated_count} containers")
+    else:
+        warning("No containers were migrated")
+
+
+def _rename_container(old: str, new: str):
+    """Safely rename an Incus container"""
+    run(["incus", "move", old, new], check=True)
+
+
+def confirm(prompt: str) -> bool:
+    """Simple yes/no prompt"""
+    reply = input(f"{prompt} (y/N): ").strip().lower()
+    return reply in ("y", "yes")
 
 def prepare_cmd_template(subparsers):
     """

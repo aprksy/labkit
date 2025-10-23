@@ -8,12 +8,13 @@ import json
 import os
 from pathlib import Path
 import sys
-import shutil
 import glob
+import shutil
 import yaml
 from labkit.global_config import LabkitConfig
+from .global_config import LabkitConfig
 
-from .utils import container_exists, run, info, success, error, warning, fatal, heading, \
+from .utils import container_exists, run, info, success, error, warning, fatal, \
     BOLD, RESET
 from .lab import Lab, list_templates
 
@@ -280,10 +281,9 @@ def _process_root(root, labs, container_map, seen_paths):
             warning(f"Failed to read {p}: {e}")
 
 def cmd_list(args):
-    from .global_config import LabkitConfig
-    from pathlib import Path
-    import json
-
+    """
+    cmd_list: handles 'list' command
+    """
     config = LabkitConfig().load()
 
     # Fetch all containers once
@@ -301,7 +301,6 @@ def cmd_list(args):
     for base_path in config.data["search_paths"]:
         if not base_path.exists():
             continue
-        import glob
         candidates = ([base_path] if "*" not in str(base_path) else glob.glob(str(base_path)))
         for candidate in candidates:
             _process_root(candidate, labs, container_map, seen_paths)
@@ -314,14 +313,12 @@ def cmd_list(args):
         labs = [l for l in labs if l["has_running"]]
 
     if args.format == "json":
-        import json as std_json
-        print(std_json.dumps(labs, default=str, indent=2))
+        print(json.dumps(labs, default=str, indent=2))
     else:
         _print_table(labs)
 
 
 def _print_table(labs):
-    from .utils import BOLD, RESET
     headers = ["NAME", "NODES", "LOCAL UP", "RUNNING", "TEMPLATE", "LAST MODIFIED", "PATH"]
     rows = []
     now = datetime.now()
@@ -330,12 +327,14 @@ def _print_table(labs):
         diff = now - datetime.fromtimestamp(dt)
         if diff.days > 0:
             return f"{diff.days}d ago"
-        elif diff.seconds > 3600:
+
+        if diff.seconds > 3600:
             return f"{diff.seconds//3600}h ago"
-        elif diff.seconds > 60:
+
+        if diff.seconds > 60:
             return f"{diff.seconds//60}m ago"
-        else:
-            return "now"
+
+        return "now"
 
     for lab in labs:
         rows.append([
@@ -345,7 +344,8 @@ def _print_table(labs):
             "yes" if lab["has_running"] else "no",
             lab["template"],
             _ago(lab["mtime"]),
-            f"~/{lab['path'].relative_to(Path.home())}" if lab['path'].is_relative_to(Path.home()) else str(lab['path'])
+            f"~/{lab['path'].relative_to(Path.home())}" if lab['path'].is_relative_to(Path.home())
+                else str(lab['path'])
         ])
 
     # Calculate max width for each column

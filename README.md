@@ -229,5 +229,9 @@ Or override during commands:
 labkit node add api01 --template golden-api
 ```
 
+## Future Plan
+- Stray container adoption mechanism
+- Update pkgs inside template containers
+
 ## License
 MIT

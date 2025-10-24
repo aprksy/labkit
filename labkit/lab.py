@@ -260,7 +260,7 @@ class Lab:
             actions.append({
                 "desc": f"Start local node: {name}",
                 "func": run,
-                "args": (["incus", "start", name],),
+                "args": (["incus", "start", f"{self.config['name']}-{name}"],),
                 "kwargs": {"check": True}
             })
 
@@ -347,7 +347,7 @@ class Lab:
             actions.append({
                 "desc": f"Stop local node: {name}",
                 "func": run,
-                "args": (["incus", "stop", name],),
+                "args": (["incus", "stop", f"{self.config['name']}-{name}"],),
                 "kwargs": {"check": True}
             })
 

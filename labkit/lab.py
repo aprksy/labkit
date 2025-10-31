@@ -234,7 +234,7 @@ class Lab:
                     local_to_start.append(name)
         else:
             # Start all local nodes that aren't running
-            local_to_start = [f"{self.config['name']}-{n}" for n in local_node_dirs
+            local_to_start = [f"{n}" for n in local_node_dirs
                               if f"{self.config['name']}-{n}" not in running_names]
 
         # Determine required nodes to start
@@ -296,7 +296,7 @@ class Lab:
                     info(f"Node '{name}' already stopped")
         else:
             # Stop all running local nodes
-            to_stop.extend([f"{self.config['name']}-{n}" for n in local_nodes
+            to_stop.extend([f"{n}" for n in local_nodes
                             if f"{self.config['name']}-{n}" in running_nodes])
 
     def _process_to_stop(self, suspend_req, running_nodes, stop_all, to_stop):

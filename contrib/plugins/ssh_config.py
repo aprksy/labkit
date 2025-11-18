@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 INTERESTED_ACTIONS = {
     "instance-started",
     "instance-shutdown",
+    "instance-stopped",
 }
 
 def handle_event(event):
@@ -29,6 +30,7 @@ def handle_event(event):
         containers = json.loads(result.stdout)
         entries = []
 
+        print(f"container count: {len(containers)}")
         for c in containers:
             if c["status"] != "Running":
                 continue

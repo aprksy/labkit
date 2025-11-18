@@ -6,10 +6,10 @@ Requires=incus.service
 [Service]
 Type=simple
 User=aprksy
-WorkingDirectory=/home/aprksy/workspace/repo/git/project-labs/labkit
-Environment=PATH=/home/aprksy/workspace/repo/git/project-labs/labkit/.venv/bin:/usr/local/bin:/usr/bin
-ExecStart=/home/aprksy/workspace/repo/git/project-labs/labkit/.venv/bin/python3 \
-    /home/aprksy/workspace/repo/git/project-labs/labkit/contrib/incus-event-listener.py
+WorkingDirectory=/home/aprksy/workspace/homelabs/incus/labkit
+Environment=PATH=/home/aprksy/workspace/homelabs/incus/labkit/.venv/bin:/usr/local/bin:/usr/bin
+ExecStart=/home/aprksy/workspace/homelabs/incus/labkit/.venv/bin/python3 \
+    /home/aprksy/workspace/homelabs/incus/labkit/contrib/incus-event-listener.py
 Restart=always
 
 [Install]

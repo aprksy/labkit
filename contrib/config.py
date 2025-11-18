@@ -10,7 +10,7 @@ class Config:
     SSH_CONFIG_PATH = Path(os.getenv("INCUSLAB_SSH_CONFIG_PATH", f"/home/{SSH_USER}/.ssh/incus_config"))
     LOG_LEVEL = os.getenv("INCUSLAB_LOG_LEVEL", "INFO").upper()
     EVENT_TYPES = [t.strip() for t in os.getenv("INCUSLAB_EVENT_TYPES", "lifecycle").split(",") if t.strip()]
-    WAIT_FOR_INSTANCE_SEC = 2
+    WAIT_FOR_INSTANCE_SEC = 5
 
     @classmethod
     def validate(cls):

@@ -406,11 +406,19 @@ class Lab:
             "kwargs": {"check": True}
         })
 
-        # 1a. Create container
+        # 1a. Unset the 'user.template' field
         actions.append({
-            "desc": f"Unset inherited template marker on '{container_name}'",
+            "desc": f"Unset 'user.template' field on '{container_name}'",
             "func": run,
             "args": (["incus", "config", "unset", container_name, "user.template"],),
+            "kwargs": {"check": True}
+        })
+
+        # 1b. Unset the 'environment.firstboot.done' field
+        actions.append({
+            "desc": f"Unset the 'environment.firstboot.done' field on '{container_name}'",
+            "func": run,
+            "args": (["incus", "config", "unset", container_name, "environment.firstboot.done"],),
             "kwargs": {"check": True}
         })
 

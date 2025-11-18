@@ -601,12 +601,11 @@ class Lab:
             yaml.dump(data, indent=2, default_flow_style=False)
         )
 
-    def get_container_state(self, name: str) -> str | None:
+    def get_container_state(self, container_name: str) -> str | None:
         """
         get_container_state: return container status: 'Running', 'Stopped', 
         or None if not found
         """
-        container_name = f"{self.config['name']}-{name}"
         result = run(["incus", "list", container_name, "--format=json"], silent=True, check=False)
         if result.returncode != 0:
             return None

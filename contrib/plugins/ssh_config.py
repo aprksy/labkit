@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 INTERESTED_ACTIONS = {
     "instance-started",
     "instance-shutdown",
+    "instance-stopped",
 }
 
 def handle_event(event):
@@ -29,6 +30,7 @@ def handle_event(event):
         containers = json.loads(result.stdout)
         entries = []
 
+        print(f"container count: {len(containers)}")
         for c in containers:
             if c["status"] != "Running":
                 continue
@@ -39,17 +41,15 @@ def handle_event(event):
                     continue
                 for addr in iface.get("addresses", []):
                     if addr["family"] == "inet" and addr["scope"] != "link":
-                        entry = f"""
-Host {c["name"]}
+                        entry = f"""Host {c["name"]}
   HostName {addr["address"]}
   User {Config.SSH_USER}
   PreferredAuthentications publickey
   IdentityFile {Config.SSH_KEY_PATH}
   # StrictHostKeyChecking yes
   # UserKnownHostsFile /dev/null
-
 """
-                        entries.append(entry.strip())
+                        entries.append(entry)
                         break
                 break
 

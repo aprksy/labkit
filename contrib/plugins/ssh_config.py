@@ -41,17 +41,15 @@ def handle_event(event):
                     continue
                 for addr in iface.get("addresses", []):
                     if addr["family"] == "inet" and addr["scope"] != "link":
-                        entry = f"""
-Host {c["name"]}
+                        entry = f"""Host {c["name"]}
   HostName {addr["address"]}
   User {Config.SSH_USER}
   PreferredAuthentications publickey
   IdentityFile {Config.SSH_KEY_PATH}
   # StrictHostKeyChecking yes
   # UserKnownHostsFile /dev/null
-
 """
-                        entries.append(entry.strip())
+                        entries.append(entry)
                         break
                 break
 

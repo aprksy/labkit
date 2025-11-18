@@ -35,6 +35,9 @@ def load_plugins():
     return plugins
 
 def main():
+    Config.load()  # ← One call, loads everything
+    logging.basicConfig(level=Config.LOG_LEVEL)
+    
     logger.info("IncusLab started.")
     try:
         Config.validate()

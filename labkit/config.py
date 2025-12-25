@@ -8,7 +8,9 @@ import yaml
 # Define non-direct user-needs here, override will come from cmd args
 DEFAULT_LAB_CONFIG = {
     "name": "unnamed-lab",
-    "template": "golden-image",
+    "template": "golden-image",  # Default template for containers
+    "vm_template": "golden-vm",  # Default template for VMs
+    "backend": "incus",  # Default backend
     "network_mode": "shared",  # 'shared' or later 'isolated'
     "shared_storage": {
         "enabled": True,

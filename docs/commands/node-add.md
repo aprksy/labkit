@@ -1,7 +1,7 @@
 # `labkit node add` – Add a Node to the Lab
 
-Creates a new Incus container from a template and integrates it into the lab with auto-generated documentation.  
-Each node gets its own `manifest.yaml` and `README.md`, mounted inside the container for on-node reference.
+Creates a new container or VM from a template and integrates it into the lab with auto-generated documentation.
+Each node gets its own `manifest.yaml` and `README.md`, mounted inside the container/VM for on-node reference.
 
 ## Syntax
 
@@ -9,15 +9,16 @@ Each node gets its own `manifest.yaml` and `README.md`, mounted inside the conta
 labkit node add <name> [flags]
 ```
 
-### Flags 
+### Flags
 
 table goes here
 | flag | default | description |
 | --- | --- | --- |
 | `<name>` | (required) | Name of the new container/node |
-| `--template <name>` | `default_template` from config | Use specific base container instead of default |
+| `--template <name>` | `default_template` from config | Use specific base image instead of default |
+| `--node-type <type>` | `container` | Type of node to create (container, vm, oci) |
 | `--dry-run` / `-n` | `false` | Show what would be done without applying changes |
-| 
+|
 
 ### Behavior 
 
@@ -26,29 +27,30 @@ table goes here
 #### Assumption
 
 - You are inside a valid lab directory (contains `lab.yaml`)
-- The template container (e.g., `golden-base`) exists and is accessible
-- Incus daemon is running
-- User has write access to the current directory and Incus
-     
-The command: 
+- The template image (e.g., `alpine`, `ubuntu`) exists and is accessible for the selected backend
+- The selected backend daemon is running (Incus, Docker, etc.)
+- User has write access to the current directory and the backend
+
+The command:
 
 1. Validates input:
-    - Ensures container name is valid (alphanumeric, hyphen)
-    - Checks that <name> doesn’t already exist as a container
-         
-2. Resolves template:
+    - Ensures node name is valid (alphanumeric, hyphen)
+    - Checks that <name> doesn’t already exist as a node for the selected backend
+
+2. Resolves template and node type:
     - Uses --template if provided
-    - Otherwise uses default_template from global config
-         
+    - Uses --node-type if provided (container, vm, oci)
+    - Otherwise uses defaults from config
+
 3. Creates actions plan (in dry-run mode):
-    - Clone container from template
+    - Create node from template (container or VM based on node-type)
     - Create `nodes/<name>/ directory`
     - Generate `manifest.yaml` and `README.md`
-    - Mount `nodes/<name>` → `/lab/node` in container
+    - Mount `nodes/<name>` → `/lab/node` in node
     - Mount `shared/` → `/lab/shared` (if enabled)
-    - Apply labels: `user.lab=<lab-name>`, `user.managed-by=labkit`
+    - Apply backend-specific labels/metadata
     - Commit metadata to Git
-         
+
 4. Executes all steps atomically
 5. Logs event to `logs/YYYYMMDD-HHMMSS-add-node.txt`
      
@@ -127,13 +129,14 @@ labkit node add cache-node --template golden-redis --dry-run
 
 Great for scripting or CI pipeline validation. 
 
-**Tips** 
+**Tips**
 
-- Node names become container names — use lowercase, numbers, hyphens only
+- Node names become backend-specific names — use lowercase, numbers, hyphens only
 - Edit `nodes/<name>/README.md` to document purpose, ports, configs, gotchas
-- Docs are mounted read-write — users can update them from inside the container
+- Docs are mounted read-write — users can update them from inside the container/VM
 - Always commit doc changes back to Git
-- Use labkit node remove `<name>` to delete the container (keeps docs)
+- Use labkit node remove `<name>` to delete the node (keeps docs)
+- When using Incus backend, you can create both containers and VMs from the same command
 
 ## See Also 
 - `labkit` [`node remove`](node-rm.md)  – Delete a node

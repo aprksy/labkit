@@ -1,0 +1,14 @@
+backend: incus
+managed_by: labkit
+name: unnamed-lab
+network_mode: shared
+node_mount:
+  mount_point: /lab/node
+  readonly: false
+  source_dir: nodes
+shared_storage:
+  enabled: true
+  mount_point: /lab/shared
+template: golden-image
+user: aprksy
+vm_template: golden-vm

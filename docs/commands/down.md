@@ -21,25 +21,26 @@ labkit down [flags]
 ## Behavior 
 
 labkit down safely shuts down lab components while protecting shared infrastructure. 
-### Assumption 
+### Assumption
 
 1. You are inside a valid lab directory (contains `lab.yaml`)
-2. Incus daemon is running
+2. The selected backend daemon is running (Incus, Docker, etc.)
 3. Required nodes are declared via requires_nodes in `lab.yaml`
-4. Shared infrastructure uses `user.pinned=true` if it should never be stopped
-     
-The command: 
+4. Shared infrastructure uses backend-specific pinned configuration if it should never be stopped
+
+The command:
 
 1. Reads `lab.yaml` to determine:
     - Local nodes (from `nodes/` directory)
     - Required external nodes (from requires_nodes)
-         
-2. Checks current state of containers via `incus list`
+    - Backend to use (from `backend` field)
+
+2. Checks current state of nodes via the selected backend
 3. Builds an action plan:
     - First: Stop local nodes (filtered by `--only` if used)
     - Then: Optionally stop required nodes (if `--suspend-required` or `--force-stop-all`)
-         
-4. Respects `user.pinned=true` unless `--force-stop-all` is used
+
+4. Respects backend-specific pinned configurations unless `--force-stop-all` is used
 5. Skips refcount checks for now (future: check `user.required_by=`)
 6. Shows full plan (in `--dry-run` mode)
 7. Executes actions in order
@@ -150,13 +151,14 @@ labkit down --only frontend --suspend-required --dry-run
 ```
 
 Great for CI teardown or maintenance scripts. 
-**Tips** 
+**Tips**
 
 - Use `--suspend-required` when shutting down a dev environment temporarily
 - Use `--force-stop-all` only in isolated test labs
 - Never assume a required node is “safe” to stop — always check who else uses it
 - Combine with labkit up `--only` for partial restarts
 - Logs help audit who stopped the lab and when
+- Backend-specific pinned configurations may vary (e.g., Incus uses user.pinned, Docker may use labels)
 
 ## See Also 
 

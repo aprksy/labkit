@@ -13,6 +13,7 @@ DEFAULT_CONFIG = {
         DEFAULT_ROOT,
     ],
     "default_template": "golden-arch",
+    "default_vm_template": "golden-vm",
     "user": os.getenv("USER", "unknown"),
 }
 
@@ -62,6 +63,7 @@ class LabkitConfig:
             "LABKIT_DEFAULT_ROOT": "default_root",
             "LABKIT_SEARCH_PATHS": "search_paths",
             "LABKIT_DEFAULT_TEMPLATE": "default_template",
+            "LABKIT_DEFAULT_VM_TEMPLATE": "default_vm_template",
             "LABKIT_USER": "user",
         }
         for env_key, config_key in env_mapping.items():
@@ -80,6 +82,7 @@ class LabkitConfig:
             "default_root": self.data["default_root"],
             "search_paths": [str(p) for p in self.data["search_paths"]],
             "default_template": self.data["default_template"],
+            "default_vm_template": self.data["default_vm_template"],
             "user": self.data["user"],
         }
         CONFIG_FILE.write_text(

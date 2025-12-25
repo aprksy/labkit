@@ -20,21 +20,22 @@ labkit up [flags]
 ## Behavior 
 
 labkit up orchestrates startup in a safe, dependency-aware order. 
-### Assumption 
+### Assumption
 
 1. You are inside a valid lab directory (contains `lab.yaml`)
-2. Incus daemon is running
-3. Template container (e.g., `golden-base`) exists
+2. The selected backend daemon is running (Incus, Docker, etc.)
+3. Template image (e.g., `alpine`, `ubuntu`) exists for the selected backend
 4. Required nodes (if any) are already defined via labkit requires add `<node>`
-     
 
-The command: 
+
+The command:
 
 1. Reads lab.yaml to determine:
     - Local nodes (from `nodes/` directory)
     - Required external nodes (from `requires_nodes`)
-   
-2. Checks current state of containers via incus list
+    - Backend to use (from `backend` field)
+
+2. Checks current state of nodes via the selected backend
 3. Builds an action plan:
     - First: Start required nodes (if `--no-deps` not set)
     - Then: Start local nodes (filtered by `--only` if used)
@@ -129,13 +130,13 @@ labkit up --only frontend --no-deps --dry-run
 ```
 
 Great for scripting and automation pipelines. 
-**Tips** 
+**Tips**
 
 - Always use `--dry-run` when unsure
 - If a required node fails to start, labkit up stops and reports the error
 - The order ensures dependencies are ready before local nodes start
-- Use `--only` with service names from `nodes/` directory (must match container name)
-- Combine with labkit status (future) or incus list to verify result
+- Use `--only` with service names from `nodes/` directory (must match backend-specific node name)
+- Combine with backend-specific status commands to verify result
      
 ## See Also 
 

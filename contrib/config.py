@@ -9,7 +9,11 @@ class Config:
     SSH_CONFIG_PATH = None
     LOG_LEVEL = "INFO"
     EVENT_TYPES = ["lifecycle"]
-    WAIT_FOR_INSTANCE_SEC = 5
+    # Legacy config - now using polling instead of fixed wait
+    WAIT_FOR_INSTANCE_SEC = 0  # Set to 0 to indicate polling is used
+    # Polling configuration
+    POLL_INTERVAL = 0.5  # Initial polling interval in seconds
+    MAX_POLL_ATTEMPTS = 20  # Maximum number of polling attempts
 
     @classmethod
     def load(cls):
@@ -69,10 +73,19 @@ class Config:
         else:
             cls.EVENT_TYPES = ["lifecycle"]
 
-        # 6. Wait Time
+        # 6. Wait Time (legacy - now using polling)
         wait = firstboot.get("wait_for_instance_sec")
         if isinstance(wait, (int, float)) and wait > 0:
             cls.WAIT_FOR_INSTANCE_SEC = float(wait)
+
+        # 7. Polling configuration
+        poll_interval = firstboot.get("poll_interval")
+        if isinstance(poll_interval, (int, float)) and poll_interval > 0:
+            cls.POLL_INTERVAL = float(poll_interval)
+
+        max_attempts = firstboot.get("max_poll_attempts")
+        if isinstance(max_attempts, int) and max_attempts > 0:
+            cls.MAX_POLL_ATTEMPTS = max_attempts
 
         # Validate after load
         cls.validate()

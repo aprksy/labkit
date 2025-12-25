@@ -15,7 +15,7 @@
     
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LabKit - Organized Incus Lab Management</title>
+    <title>LabKit - Organized Container & VM Lab Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -452,7 +452,7 @@
     <div class="container">
         <header>
             <h1><span class="logo">LabKit</span></h1>
-            <p class="tagline">Organized Incus Lab Management</p>
+            <p class="tagline">Organized Container & VM Lab Management</p>
 
             <div class="badges">
                 <a href="https://github.com/aprksy/labkit" class="badge">
@@ -476,25 +476,25 @@
         <main>
             <section>
                 <h2>Problems</h2>
-                <p>I run dozens of Incus containers across multiple development and homelab projects. Over time, I lost track of:</p>
+                <p>I run dozens of containers and VMs across multiple development and homelab projects. Over time, I lost track of:</p>
                 <ul>
-                    <li><strong>Which?</strong>: Which container belonged to which project</li>
-                    <li><strong>What?</strong>: What each one was for</li>
+                    <li><strong>Which?</strong>: Which container/VM belonged to which project</li>
+                    <li><strong>What?</strong>: What each container/VM was for</li>
                     <li><strong>How?</strong>: How they were configured</li>
                     <li><strong>Where?</strong>: Where documentation lived</li>
                 </ul>
-                <p>Documentation was scattered — some in notes, some in READMEs, some nowhere. I’d forget why a container existed, or accidentally break one used by another project.
+                <p>Documentation was scattered — some in notes, some in READMEs, some nowhere. I’d forget why a container/VM existed, or accidentally break one used by another project.
                     This chaos led to duplicated work, confusion, and wasted time.</p>
             </section>
 
             <section>
                 <h2>Objective</h2>
-                <p>To create a lightweight, Git-integrated system that brings clarity to Incus-based development labs by:</p>
+                <p>To create a lightweight, Git-integrated system that brings clarity to container and VM-based development labs by:</p>
                 <ul>
                     <li>Structuring projects with self-documenting nodes</li>
                     <li>Automating setup and teardown</li>
                     <li>Making dependencies explicit</li>
-                    <li>Ensuring every container carries its purpose</li>
+                    <li>Ensuring every container/VM carries its purpose</li>
                 </ul>
                 <p>No enforcement — just gentle structure.</p>
             </section>
@@ -515,11 +515,11 @@
                 <div class="features">
                     <div class="feature-card">
                         <h3><i class="fas fa-terminal"></i>node add/rm</h3>
-                        <p>Add/remove Incus container</p>
+                        <p>Add/remove containers and VMs</p>
                     </div>
                     <div class="feature-card">
                         <h3><i class="fas fa-magic"></i>requires add/rm</h3>
-                        <p>Add/remove required external Incus container</p>
+                        <p>Add/remove required external nodes</p>
                     </div>
                     <div class="feature-card">
                         <h3><i class="fas fa-save"></i>up/down</h3>
@@ -562,13 +562,17 @@
                 <h2>Getting Started</h2>
                 <p>In your labs collection directory:</p>
                 <div id="editable" contenteditable="false">
-                    <div>> # create new project/lab</div>
+                    <div>> # create new project/lab with default backend</div>
                     <div>> labkit new --template base-debian my-gis-project</div>
                     <div>> cd my-gis-project</div>
+                    <div>> # or initialize with specific backend (incus, docker, qemu)</div>
+                    <div>> labkit init --backend incus</div>
                     <div>> labkit requires add my-osm-tile-server</div>
+                    <div>> # add container nodes</div>
                     <div>> labkit node add my-db-server</div>
                     <div>> labkit node add backend-node</div>
-                    <div>> labkit node add frontend-node</div>
+                    <div>> # add VM nodes (when using Incus backend)</div>
+                    <div>> labkit node add vm-node --node-type vm</div>
                     <div>> labkit up</div>
                     <div>> labkit down</div>
                 </div>

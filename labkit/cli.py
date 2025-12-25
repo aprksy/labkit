@@ -290,18 +290,21 @@ def _process_root(root, labs, container_map, seen_paths):
         seen_paths.add(p)
         lab_yaml = p / "lab.yaml"
 
-        if not lab_yaml.exists():
-            continue
-
         try:
-            # Check if we have permission to access the file
-            if not os.access(lab_yaml, os.R_OK):
-                continue  # Skip this directory if we don't have read permission
+            # Check if the lab.yaml file exists
+            if not lab_yaml.exists():
+                continue
 
-            data = yaml.safe_load(lab_yaml.read_text()) or {}
+            # Try to read the file and get its stats, handling permission errors
+            try:
+                data = yaml.safe_load(lab_yaml.read_text()) or {}
+                mtime = lab_yaml.stat().st_mtime
+            except PermissionError:
+                # Skip this directory if we don't have permission to read the file
+                continue
+
             lab_name = data.get("name") or p.name
             template = data.get("template", "unknown")
-            mtime = lab_yaml.stat().st_mtime
 
             # Get local node names (from nodes/ subdirs)
             nodes_dir = p / "nodes"
@@ -331,11 +334,13 @@ def _process_root(root, labs, container_map, seen_paths):
                 "running_count": running_count,
                 "has_running": has_running,
             })
-        except PermissionError:
-            # Skip directories we don't have permission to access
-            continue
         except Exception as e:
-            warning(f"Failed to read {p}: {e}")
+            # Handle any other exceptions, including permission errors
+            if isinstance(e, PermissionError):
+                # Skip directories we don't have permission to access
+                continue
+            else:
+                warning(f"Failed to read {p}: {e}")
 
 def cmd_list(args):
     """

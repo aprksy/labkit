@@ -38,13 +38,25 @@ class LabConfig:
         """
         load: loads configuration from default lab.yaml
         """
+        # First, try to load from global config as defaults
+        try:
+            from .global_config import LabkitConfig
+            global_config = LabkitConfig().load()
+            # Update defaults with global config values
+            for key in ["template", "vm_template", "backend", "user"]:
+                if key in global_config.data:
+                    self.data[key] = global_config.data[key]
+        except:
+            # If global config fails, continue with default values
+            pass
+
         if self.path.exists():
             try:
                 self.data.update(yaml.safe_load(self.path.read_text()))
             except Exception as e:
                 raise RuntimeError(f"Failed to load lab.yaml: {e}") from e
         else:
-            self.save()  # Create default
+            self.save()  # Create default based on global config or defaults
         return self.data
 
     def save(self):

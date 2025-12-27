@@ -60,10 +60,6 @@ class IncusNodeBackend(NodeBackend):
             f"limits.memory={node.memory}"
         ]
 
-        # Add disk limits for containers (not for VMs, which use device config)
-        if include_disk and node.node_type != NodeType.VM and node.disk:
-            config_args.append(f"limits.disk.size={node.disk}")
-
         if node.config:
             for key, value in node.config.items():
                 config_args.append(f"{key}={value}")

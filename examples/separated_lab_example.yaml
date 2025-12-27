@@ -1,0 +1,82 @@
+# LabKit Lab Configuration File
+# This file is created in each lab directory as lab.yaml
+
+# Lab name
+name: "my-dev-lab"
+
+# Backend to use (incus, docker, qemu)
+backend: "incus"
+
+# Default container template
+template: "golden-arch"
+
+# Default VM template
+vm_template: "golden-vm"
+
+# User
+user: "aprksy"
+
+# Managed by (should not be changed)
+managed_by: "labkit"
+
+# Required external nodes (dependencies)
+requires_nodes:
+  - "shared-postgres"
+  - "redis-cache"
+  - "nginx-proxy"
+
+# Network mode
+network_mode: "shared"
+
+# Shared storage configuration
+shared_storage:
+  enabled: true
+  mount_point: "/lab/shared"
+
+# Node mount configuration
+node_mount:
+  source_dir: "nodes"
+  mount_point: "/lab/node"
+  readonly: false
+
+# Lab-specific plugin configurations
+plugins:
+  # Plugin-specific settings for this lab
+  ssh_config:
+    # Override global SSH config settings for this lab
+    enabled: true
+    ssh_config_path: "./lab_ssh_config"  # Lab-specific SSH config
+  
+  # Firstboot settings for this lab
+  firstboot:
+    enabled: true
+    default_user: "labuser"
+    ssh_keys:
+      - "~/.ssh/id_rsa.pub"
+      - "~/.ssh/id_ed25519.pub"
+
+# Additional lab-specific settings
+settings:
+  # Auto-start nodes on system boot
+  auto_start: false
+  
+  # Environment type
+  environment: "development"
+  
+  # Labels to apply to all nodes in this lab
+  labels:
+    project: "my-dev-lab"
+    environment: "dev"
+  
+  # Resource limits for this lab
+  resource_limits:
+    cpu: 4
+    memory: "8GB"
+    disk: "100GB"
+  
+  # Lab-specific templates for different node types
+  templates:
+    web: "golden-web"
+    db: "golden-db"
+    cache: "golden-cache"
+    vm: "golden-vm-full"

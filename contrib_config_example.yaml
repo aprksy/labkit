@@ -1,0 +1,85 @@
+# LabKit Contrib/Plugin Configuration
+# Place this file at ~/.config/labkit/contrib_config.yaml or in project root as .env
+
+# SSH Configuration for Incus Event Listener
+ssh_config:
+  # SSH user for accessing containers/VMs
+  ssh_user: "labkit"
+  
+  # SSH key path (can use ~ or $HOME)
+  ssh_key_path: "~/.ssh/id_ed25519"
+  
+  # SSH config file path
+  ssh_config_path: "~/.ssh/incus_config"
+  
+  # Logging level for plugins
+  log_level: "INFO"
+
+# Incus Event Listener Configuration
+event_listener:
+  # Event types to listen for
+  event_types: ["lifecycle"]
+  
+  # Polling configuration for SSH config updates
+  poll_interval: 0.5      # Initial polling interval in seconds
+  max_poll_attempts: 20   # Maximum number of polling attempts
+  poll_timeout: 10        # Total timeout in seconds
+  
+  # Legacy wait time (now using polling, but kept for backward compatibility)
+  wait_for_instance_sec: 0
+
+# Firstboot Handler Configuration
+firstboot:
+  # Timeout for firstboot operations
+  timeout: 30
+  
+  # Supported distros for firstboot setup
+  supported_distros:
+    - "alpine"
+    - "ubuntu" 
+    - "debian"
+    - "centos"
+    - "rocky"
+    - "fedora"
+
+# Plugin-specific settings
+plugins:
+  # SSH Config plugin settings
+  ssh_config:
+    # Enable/disable SSH config generation
+    enabled: true
+    
+    # SSH options to apply to all generated entries
+    ssh_options:
+      PreferredAuthentications: "publickey"
+      StrictHostKeyChecking: "no"
+      UserKnownHostsFile: "/dev/null"
+      LogLevel: "ERROR"
+  
+  # Firstboot handler plugin settings
+  firstboot_handler:
+    enabled: true
+    regenerate_ssh_keys: true
+    set_hostname: true
+    mark_completed: true
+
+# Environment-specific settings
+environment:
+  # Development settings
+  development:
+    log_level: "DEBUG"
+    enable_plugins: true
+  
+  # Production settings  
+  production:
+    log_level: "WARNING"
+    enable_plugins: true
+    strict_mode: true
+
+# Plugin paths and settings
+paths:
+  # Directory where plugins are located
+  plugins_dir: "./contrib/plugins"
+  
+  # Template directory for plugin examples
+  templates_dir: "./contrib/templates"

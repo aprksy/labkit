@@ -1,0 +1,22 @@
+name: ssh-config
+version: 1.0.0
+type: hook
+author: LabKit Team
+description: SSH configuration updater for LabKit containers and VMs
+entry_point: plugin.py
+dependencies:
+  - incus
+config_schema:
+  ssh_user:
+    type: string
+    default: "labkit"
+  ssh_key_path:
+    type: string
+    default: "~/.ssh/id_ed25519"
+  ssh_config_path:
+    type: string
+    default: "~/.ssh/labkit_config"
+default_config:
+  ssh_user: "labkit"
+  ssh_key_path: "~/.ssh/id_ed25519"
+  ssh_config_path: "~/.ssh/labkit_config"

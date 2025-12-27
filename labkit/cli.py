@@ -136,13 +136,35 @@ def prepare_cmd_init(subparsers):
     init_p.add_argument("--backend", help="Backend to use (incus, docker, qemu)", default="incus")
     init_p.add_argument("--allow-scattered", action="store_true",
                         help="Allow lab creation outside default labs root")
+    init_p.add_argument("--config-source", choices=["global", "project", "env", "dotenv", "defaults"],
+                        help="Specify which configuration source to use (default: follows priority order)")
 
 def cmd_init(args, check_passed=False):
     """
     cmd_init: handles 'init' command
     """
     current_dir = Path.cwd()
-    config = LabkitConfig().load()
+
+    # Check if a specific config source was requested
+    config = LabkitConfig()
+    if hasattr(args, 'config_source') and args.config_source:
+        from labkit.config_manager import ConfigSource
+
+        # Map string to enum
+        source_map = {
+            "global": ConfigSource.GLOBAL_CONFIG,
+            "project": ConfigSource.PROJECT_CONFIG,
+            "env": ConfigSource.ENVIRONMENT,
+            "dotenv": ConfigSource.DOTENV,
+            "defaults": ConfigSource.DEFAULTS
+        }
+
+        if args.config_source in source_map:
+            config.load_from_source(source_map[args.config_source])
+        else:
+            config.load()  # Default behavior
+    else:
+        config.load()  # Default behavior
 
     if (current_dir / "lab.yaml").exists():
         warning("This directory is already a lab (lab.yaml exists). Skipping init.")

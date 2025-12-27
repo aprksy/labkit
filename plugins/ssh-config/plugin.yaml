@@ -1,0 +1,30 @@
+name: ssh-config
+version: 1.0.0
+type: event_handler
+author: LabKit Team
+description: SSH configuration generator for LabKit containers and VMs
+entry_point: plugin.py
+dependencies:
+  - incus
+config_schema:
+  ssh_user:
+    type: string
+    default: "labkit"
+  ssh_key_path:
+    type: string
+    default: "~/.ssh/aprksy"
+  ssh_config_path:
+    type: string
+    default: "~/.ssh/labkit_config"
+  poll_interval:
+    type: number
+    default: 0.5
+  max_poll_attempts:
+    type: integer
+    default: 20
+default_config:
+  ssh_user: "labkit"
+  ssh_key_path: "~/.ssh/aprksy"
+  ssh_config_path: "~/.ssh/labkit_config"
+  poll_interval: 0.5
+  max_poll_attempts: 20

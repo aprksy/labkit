@@ -8,6 +8,8 @@ from pathlib import Path
 import subprocess
 from datetime import datetime
 import yaml
+from typing import List, Dict, Any, Optional
+
 from .config import LabConfig
 from .utils import container_exists, run, info, success, error, warning
 from .models import RequiredNode, NodeType
@@ -15,6 +17,9 @@ from .backends.base import NodeBackend
 from .backends.incus import IncusNodeBackend
 from .backends.docker import DockerNodeBackend
 from .backends.qemu import QemuNodeBackend
+from .action_builder import ActionBuilder
+from .action_executor import ActionExecutor
+
 
 class Lab:
     """
@@ -26,9 +31,12 @@ class Lab:
         self.config = LabConfig(self.config_path).load()
         self.nodes_dir = self.root / "nodes"
         self.shared_dir = self.root / "shared"
-        self.dry_run = False
         self.backend_type = backend
         self.backend = self._initialize_backend(backend)
+
+        # Initialize refactored components
+        self.action_builder = ActionBuilder(self.backend, self.config, self.root)
+        self.action_executor = ActionExecutor(self.root)
 
     def _initialize_backend(self, backend_type: str) -> NodeBackend:
         """Initialize the appropriate backend based on type"""
@@ -41,31 +49,14 @@ class Lab:
         else:
             raise ValueError(f"Unsupported backend type: {backend_type}")
 
-    def _describe_and_apply(self, actions, dry_run=False):
+    def _execute_plan(self, actions: List[Dict[str, Any]], dry_run: bool = False) -> bool:
         """
-        _describe_and_apply: show all planned actions, then execute if not dry_run.
+        _execute_plan: Execute action plan using the action executor
+        :param actions: List of action dictionaries
+        :param dry_run: Whether to execute in dry-run mode
+        :return: True if successful
         """
-        if not actions:
-            info("Nothing to do.")
-            return
-
-        info("Planned actions:")
-        for act in actions:
-            print(f"  {act['desc']}")
-
-        if dry_run:
-            info("DRY RUN: No changes applied")
-            return
-
-        # Apply
-        for act in actions:
-            try:
-                act['func'](*act.get('args', ''), **act.get('kwargs', {}))
-            except Exception as e:
-                error(f"Failed to execute: {act['desc']} → {e}")
-                raise
-
-        success("All actions completed")
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def _log_event(self, action: str, **details):
         """
@@ -166,7 +157,7 @@ class Lab:
                 "func": save_lab_config,
             })
 
-        self._describe_and_apply(actions, dry_run)
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def remove_requirement(self, node_names, dry_run=False):
         """
@@ -222,7 +213,7 @@ class Lab:
                 "func": save_lab_config
             })
 
-        self._describe_and_apply(actions, dry_run)
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def up(self, only=None, include_deps=True, dry_run=False):
         """
@@ -264,7 +255,7 @@ class Lab:
             # Start all local nodes that aren't running
             for node_name in local_node_dirs:
                 # local_running_names contains logical names from backend
-                scoped_name = f"{self.config['name']}-{node_name}" 
+                scoped_name = f"{self.config['name']}-{node_name}"
                 if scoped_name not in local_running_names:
                     local_to_start.append(node_name)
 
@@ -304,13 +295,15 @@ class Lab:
                 filtered=only
             )
 
-        if actions:
-            actions.append({
-                "desc": "Log up event",
-                "func": log_up
-            })
+        # Build actions using the action builder
+        actions = self.action_builder.build_up_actions(
+            only=only,
+            include_deps=include_deps,
+            dry_run=dry_run
+        )
 
-        self._describe_and_apply(actions, dry_run)
+        # Execute the plan using the action executor
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def _process_only_flag(self, target, local_nodes, running_nodes, to_stop):
         if target:
@@ -412,13 +405,16 @@ class Lab:
                 filtered=only
             )
 
-        if actions:
-            actions.append({
-                "desc": "Log down event",
-                "func": log_down
-            })
+        # Build actions using the action builder
+        actions = self.action_builder.build_down_actions(
+            only=only,
+            suspend_required=suspend_required,
+            force_stop_all=force_stop_all,
+            dry_run=dry_run
+        )
 
-        self._describe_and_apply(actions, dry_run)
+        # Execute the plan using the action executor
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def add_node(self, name: str, template: str | None = None, node_type: NodeType = NodeType.CONTAINER, dry_run: bool = False):
         """
@@ -435,122 +431,24 @@ class Lab:
         node_name = f"{self.config['name']}-{name}"
         info(f"Using scoped name: {node_name}")
 
-        # Validate upfront using backend
-        if not self.backend.exists(name):
-            # Create RequiredNode specification
-            node_spec = RequiredNode(
-                name=name,
-                node_type=node_type,
-                image=effective_template,
-                cpus=1,  # Default CPU count
-                memory="512MB",  # Default memory
-                disk="4GiB",  # Default disk
-                config={
-                    "user.lab": self.config["name"],
-                    "user.managed-by": "labkit"
-                }
-            )
+        # Build actions using the action builder
+        node_spec = RequiredNode(
+            name=name,
+            node_type=node_type,
+            image=effective_template,
+            cpus=1,  # Default CPU count
+            memory="512MB",  # Default memory
+            disk="4GiB",  # Default disk
+            config={
+                "user.lab": self.config["name"],
+                "user.managed-by": "labkit"
+            }
+        )
 
-            node_dir = self.nodes_dir / name
-            mount_point = self.config["node_mount"]["mount_point"]
-            shared_mp = self.config["shared_storage"]["mount_point"]
+        actions = self.action_builder.build_add_node_actions(node_spec, dry_run=dry_run)
 
-            actions = []
-
-            # 1. Create node via backend
-            actions.append({
-                "desc": f"Create {node_type.value} '{node_name}' from '{effective_template}'",
-                "func": self.backend.provision,
-                "args": (node_spec,)
-            })
-
-            # 2. Create node directory
-            actions.append({
-                "desc": f"Create directory {node_dir}",
-                "func": lambda path: path.mkdir(exist_ok=True),
-                "args": (node_dir,)
-            })
-
-            # 3. Write manifest.yaml
-            def write_manifest():
-                (node_dir / "manifest.yaml").write_text(f"""name: {name}
-    purpose: >-
-    Replace with short description
-    role: unknown
-    tags: []
-    environment: development
-    owner: {self.config['user']}
-    lifecycle: experimental
-    created_via: labkit node add
-    dependencies: []
-    notes: |
-    Add usage notes, gotchas, maintenance tips here.
-    """)
-
-            actions.append({
-                "desc": f"Generate {node_dir}/manifest.yaml",
-                "func": write_manifest
-            })
-
-            # 4. Write README.md
-            def write_readme():
-                (node_dir / "README.md").write_text(
-                    f"# {name}\n\n> Update this with purpose and usage\n")
-
-            actions.append({
-                "desc": f"Generate {node_dir}/README.md",
-                "func": write_readme
-            })
-
-            # 5. Mount node dir using backend
-            actions.append({
-                "desc": f"Mount {node_dir} → {name}:{mount_point}",
-                "func": self.backend.mount_volume,
-                "args": (name, str(node_dir), mount_point)
-            })
-
-            # 6. Mount shared storage (if enabled)
-            if self.config["shared_storage"].get("enabled", True):
-                actions.append({
-                    "desc": f"Mount {self.shared_dir} → {name}:{shared_mp}",
-                    "func": self.backend.mount_volume,
-                    "args": (name, str(self.shared_dir), shared_mp)
-                })
-
-            # 7. Set metadata using backend
-            actions.append({
-                "desc": f"Set metadata on {node_name}",
-                "func": self.backend.set_metadata,
-                "args": (name, "lab", self.config["name"])
-            })
-
-            actions.append({
-                "desc": f"Set managed-by metadata on {node_name}",
-                "func": self.backend.set_metadata,
-                "args": (name, "managed-by", "labkit")
-            })
-
-            # 8. Git commit
-            def git_commit():
-                subprocess.run(["git", "add", "."], cwd=self.root, check=False)
-                env = os.environ.copy()
-                env.setdefault("GIT_AUTHOR_NAME", "labkit")
-                env.setdefault("GIT_COMMITTER_NAME", "labkit")
-                env.setdefault("GIT_AUTHOR_EMAIL", "labkit@localhost")
-                env.setdefault("GIT_COMMITTER_EMAIL", "labkit@localhost")
-                subprocess.run([
-                    "git", "commit", "-m", f"labkit: added node {name}"
-                ], cwd=self.root, env=env, check=False)  # ignore no-changes
-
-            actions.append({
-                "desc": "Commit node metadata to Git",
-                "func": git_commit
-            })
-
-            # Execute plan
-            self._describe_and_apply(actions, dry_run)
-        else:
-            raise RuntimeError(f"Node '{node_name}' already exists")
+        # Execute the plan using the action executor
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def remove_node(self, name: str, force: bool = False, dry_run: bool = False):
         """
@@ -606,8 +504,11 @@ class Lab:
             "func": git_commit
         })
 
-        # Execute plan
-        self._describe_and_apply(actions, dry_run)
+        # Build actions using the action builder
+        actions = self.action_builder.build_remove_node_actions(name, force=force, dry_run=dry_run)
+
+        # Execute the plan using the action executor
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def get_node_count(self):
         """

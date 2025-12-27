@@ -1,0 +1,20 @@
+[Unit]
+Description=LabKit Incus Event Automation Service
+After=incus.service
+Requires=incus.service
+
+[Service]
+Type=exec
+User=aprksy
+Group=aprksy
+ExecStart=/bin/sh -c 'exec /usr/bin/incus monitor --type=lifecycle --format=json | \
+    /home/aprksy/workspace/homelabs/incus/labkit/.venv/bin/python3 \
+    /home/aprksy/workspace/homelabs/incus/labkit/plugins/incus-event-listener-plugin/process_events.py'
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+Environment=PATH=/home/workspace/homelabs/incus/labkit/.venv/bin:/usr/local/bin:/usr/bin
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+name: incus-event-listener
+version: 1.0.0
+type: event_handler
+author: LabKit Team
+description: Incus event listener for LabKit event-driven automation
+entry_point: plugin.py
+dependencies:
+  - incus
+config_schema:
+  log_level:
+    type: string
+    default: "INFO"
+  event_types:
+    type: array
+    items:
+      type: string
+    default: ["lifecycle"]
+default_config:
+  log_level: "INFO"
+  event_types: ["lifecycle"]

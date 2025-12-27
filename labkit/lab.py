@@ -1,5 +1,5 @@
 """
-lab.py: module that serve homelab management using Incus containers
+lab.py: module that serve homelab management using abstracted backends
 """
 import json
 import getpass
@@ -8,46 +8,55 @@ from pathlib import Path
 import subprocess
 from datetime import datetime
 import yaml
+from typing import List, Dict, Any, Optional
+
 from .config import LabConfig
 from .utils import container_exists, run, info, success, error, warning
+from .models import RequiredNode, NodeType
+from .backends.base import NodeBackend
+from .backends.incus import IncusNodeBackend
+from .backends.docker import DockerNodeBackend
+from .backends.qemu import QemuNodeBackend
+from .action_builder import ActionBuilder
+from .action_executor import ActionExecutor
+
 
 class Lab:
     """
     Lab: class that encapsulates both data and mechanism for managing homelabs
     """
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, backend: str = "incus"):
         self.root = root.absolute()
         self.config_path = self.root / "lab.yaml"
         self.config = LabConfig(self.config_path).load()
         self.nodes_dir = self.root / "nodes"
         self.shared_dir = self.root / "shared"
-        self.dry_run = False
+        self.backend_type = backend
+        self.backend = self._initialize_backend(backend)
 
-    def _describe_and_apply(self, actions, dry_run=False):
+        # Initialize refactored components
+        self.action_builder = ActionBuilder(self.backend, self.config, self.root)
+        self.action_executor = ActionExecutor(self.root)
+
+    def _initialize_backend(self, backend_type: str) -> NodeBackend:
+        """Initialize the appropriate backend based on type"""
+        if backend_type == "incus":
+            return IncusNodeBackend(self.config["name"])
+        elif backend_type == "docker":
+            return DockerNodeBackend(self.config["name"])
+        elif backend_type == "qemu":
+            return QemuNodeBackend(self.config["name"])
+        else:
+            raise ValueError(f"Unsupported backend type: {backend_type}")
+
+    def _execute_plan(self, actions: List[Dict[str, Any]], dry_run: bool = False) -> bool:
         """
-        _describe_and_apply: show all planned actions, then execute if not dry_run.
+        _execute_plan: Execute action plan using the action executor
+        :param actions: List of action dictionaries
+        :param dry_run: Whether to execute in dry-run mode
+        :return: True if successful
         """
-        if not actions:
-            info("Nothing to do.")
-            return
-
-        info("Planned actions:")
-        for act in actions:
-            print(f"  {act['desc']}")
-
-        if dry_run:
-            info("DRY RUN: No changes applied")
-            return
-
-        # Apply
-        for act in actions:
-            try:
-                act['func'](*act.get('args', ''), **act.get('kwargs', {}))
-            except Exception as e:
-                error(f"Failed to execute: {act['desc']} → {e}")
-                raise
-
-        success("All actions completed")
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def _log_event(self, action: str, **details):
         """
@@ -148,7 +157,7 @@ class Lab:
                 "func": save_lab_config,
             })
 
-        self._describe_and_apply(actions, dry_run)
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def remove_requirement(self, node_names, dry_run=False):
         """
@@ -204,11 +213,11 @@ class Lab:
                 "func": save_lab_config
             })
 
-        self._describe_and_apply(actions, dry_run)
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def up(self, only=None, include_deps=True, dry_run=False):
         """
-        up: bring up the lab, starting Incus containers
+        up: bring up the lab, starting nodes via backend
         """
         # Parse --only into list
         target_nodes = []
@@ -216,10 +225,18 @@ class Lab:
             target_nodes = [n.strip() for n in only.split(",") if n.strip()]
             info(f"Target nodes: {', '.join(target_nodes)}")
 
-        # Get current container states
-        result = run(["incus", "list", "--format=json"], silent=True)
-        containers = json.loads(result.stdout)
-        running_names = {c["name"] for c in containers if c["status"] == "Running"}
+        # Get current node states via backend
+        local_running_names = set(self.backend.list_active())
+
+        # For dependencies, we still need to check with the original system (Incus)
+        # In a full implementation, dependencies would also use the backend abstraction
+        if self.backend_type == "incus":
+            result = run(["incus", "list", "--format=json"], silent=True)
+            containers = json.loads(result.stdout)
+            running_names = {c["name"] for c in containers if c["status"] == "Running"}
+        else:
+            # For other backends, we might need different logic
+            running_names = local_running_names
 
         # Determine which local nodes to start
         local_node_dirs = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
@@ -227,26 +244,31 @@ class Lab:
 
         if only:
             for name in target_nodes:
-                target_name = f"{self.config['name']}-{name}"
                 if name not in local_node_dirs:
                     warning(f"Node '{name}' not found in nodes/ — skipping")
-                elif target_name not in running_names:
-                    local_to_start.append(name)
+                else:
+                    # local_running_names contains logical names from backend
+                    scoped_name = f"{self.config['name']}-{name}"
+                    if scoped_name not in local_running_names:
+                        local_to_start.append(name)
         else:
             # Start all local nodes that aren't running
-            local_to_start = [f"{n}" for n in local_node_dirs
-                              if f"{self.config['name']}-{n}" not in running_names]
+            for node_name in local_node_dirs:
+                # local_running_names contains logical names from backend
+                scoped_name = f"{self.config['name']}-{node_name}"
+                if scoped_name not in local_running_names:
+                    local_to_start.append(node_name)
 
-        # Determine required nodes to start
+        # Determine required nodes to start (for now, only support Incus for dependencies)
         required_to_start = []
-        if include_deps:
+        if include_deps and self.backend_type == "incus":
             required_nodes = self.config.get("requires_nodes", [])
             required_to_start = [n for n in required_nodes if n not in running_names]
 
         # Build actions
         actions = []
 
-        # Start required nodes first
+        # Start required nodes first (only for Incus for now)
         for name in required_to_start:
             actions.append({
                 "desc": f"Start required node: {name}",
@@ -255,13 +277,13 @@ class Lab:
                 "kwargs": {"check": True}
             })
 
-        # Start local nodes
+        # Start local nodes via backend
         for name in local_to_start:
             actions.append({
                 "desc": f"Start local node: {name}",
-                "func": run,
-                "args": (["incus", "start", f"{self.config['name']}-{name}"],),
-                "kwargs": {"check": True}
+                "func": self.backend.start,
+                "args": (name,),
+                "kwargs": {}
             })
 
         # Log event
@@ -273,13 +295,15 @@ class Lab:
                 filtered=only
             )
 
-        if actions:
-            actions.append({
-                "desc": "Log up event",
-                "func": log_up
-            })
+        # Build actions using the action builder
+        actions = self.action_builder.build_up_actions(
+            only=only,
+            include_deps=include_deps,
+            dry_run=dry_run
+        )
 
-        self._describe_and_apply(actions, dry_run)
+        # Execute the plan using the action executor
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def _process_only_flag(self, target, local_nodes, running_nodes, to_stop):
         if target:
@@ -289,15 +313,18 @@ class Lab:
                 # compare non-namespaced container name
                 if name not in local_nodes:
                     warning(f"Node '{name}' not found in nodes/ — skipping")
-                # compare namespaced container name because taken from Incus
-                elif f"{self.config['name']}-{name}" in running_nodes:
-                    to_stop.append(name)
                 else:
-                    info(f"Node '{name}' already stopped")
+                    # running_nodes contains logical names from backend
+                    if name in running_nodes:
+                        to_stop.append(name)
+                    else:
+                        info(f"Node '{name}' already stopped")
         else:
             # Stop all running local nodes
-            to_stop.extend([f"{n}" for n in local_nodes
-                            if f"{self.config['name']}-{n}" in running_nodes])
+            for node_name in local_nodes:
+                # running_nodes contains logical names from backend
+                if node_name in running_nodes:
+                    to_stop.append(node_name)
 
     def _process_to_stop(self, suspend_req, running_nodes, stop_all, to_stop):
         if suspend_req:
@@ -305,8 +332,8 @@ class Lab:
             for name in required_nodes:
                 if name not in running_nodes:
                     continue  # already stopped
-                if not stop_all:
-                    # Check if pinned
+                if not stop_all and self.backend_type == "incus":
+                    # Check if pinned (only for Incus for now)
                     pin_result = run(
                         ["incus", "config", "get", name, "user.pinned"],
                         silent=True, check=False
@@ -319,12 +346,20 @@ class Lab:
 
     def down(self, only=None, suspend_required=False, force_stop_all=False, dry_run=False):
         """
-        down: bring down the lab, stop Incus containers
+        down: bring down the lab, stop nodes via backend
         """
-        # Get current container states
-        result = run(["incus", "list", "--format=json"], silent=True)
-        containers = json.loads(result.stdout)
-        running_names = {c["name"] for c in containers if c["status"] == "Running"}
+        # Get current node states via backend
+        local_running_names = set(self.backend.list_active())
+
+        # For dependencies, we still need to check with the original system (Incus)
+        # In a full implementation, dependencies would also use the backend abstraction
+        if self.backend_type == "incus":
+            result = run(["incus", "list", "--format=json"], silent=True)
+            containers = json.loads(result.stdout)
+            running_names = {c["name"] for c in containers if c["status"] == "Running"}
+        else:
+            # For other backends, we might need different logic
+            running_names = local_running_names
 
         # Determine which local nodes to stop
         local_node_dirs = [d.name for d in self.nodes_dir.iterdir() if d.is_dir()]
@@ -333,25 +368,26 @@ class Lab:
         if only and (force_stop_all or suspend_required):
             error("Cannot use '--force-stop-all' and/or '--suspend-required' with '--only'")
             return
-        self._process_only_flag(only, local_node_dirs, running_names, local_to_stop)
+        self._process_only_flag(only, local_node_dirs, local_running_names, local_to_stop)
 
-        # Determine required nodes to suspend
+        # Determine required nodes to suspend (for now, only support Incus for dependencies)
         required_to_suspend = []
-        self._process_to_stop(suspend_required, running_names, force_stop_all, required_to_suspend)
+        if suspend_required and self.backend_type == "incus":
+            self._process_to_stop(suspend_required, running_names, force_stop_all, required_to_suspend)
 
         # Build actions
         actions = []
 
-        # Stop local nodes
+        # Stop local nodes via backend
         for name in local_to_stop:
             actions.append({
                 "desc": f"Stop local node: {name}",
-                "func": run,
-                "args": (["incus", "stop", f"{self.config['name']}-{name}"],),
-                "kwargs": {"check": True}
+                "func": self.backend.stop,
+                "args": (name,),
+                "kwargs": {}
             })
 
-        # Suspend required nodes
+        # Suspend required nodes (only for Incus for now)
         for name in required_to_suspend:
             actions.append({
                 "desc": f"Suspend required node: {name}",
@@ -369,187 +405,81 @@ class Lab:
                 filtered=only
             )
 
-        if actions:
-            actions.append({
-                "desc": "Log down event",
-                "func": log_down
-            })
+        # Build actions using the action builder
+        actions = self.action_builder.build_down_actions(
+            only=only,
+            suspend_required=suspend_required,
+            force_stop_all=force_stop_all,
+            dry_run=dry_run
+        )
 
-        self._describe_and_apply(actions, dry_run)
+        # Execute the plan using the action executor
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
-    def add_node(self, name: str, template: str | None = None, dry_run: bool = False):
+    def add_node(self, name: str, template: str | None = None, node_type: NodeType = NodeType.CONTAINER, dry_run: bool = False):
         """
         add_node: adds a new node into the lab
         """
-        # Resolve template
-        effective_template = template or self.config["template"]
-        container_name = f"{self.config['name']}-{name}"
-        info(f"Using scoped name: {container_name}")
+        # Resolve template based on node type
+        if template:
+            effective_template = template
+        elif node_type == NodeType.VM:
+            effective_template = self.config.get("vm_template", self.config["template"])
+        else:
+            effective_template = self.config["template"]
 
-        # Validate upfront
-        if not container_exists(effective_template):
-            raise RuntimeError(f"Template '{effective_template}' not found")
-        if container_exists(container_name):
-            raise RuntimeError(f"Container '{container_name}' already exists")
+        node_name = f"{self.config['name']}-{name}"
+        info(f"Using scoped name: {node_name}")
 
-        node_dir = self.nodes_dir / name
-        mount_point = self.config["node_mount"]["mount_point"]
-        shared_mp = self.config["shared_storage"]["mount_point"]
+        # Build actions using the action builder
+        node_spec = RequiredNode(
+            name=name,
+            node_type=node_type,
+            image=effective_template,
+            cpus=1,  # Default CPU count
+            memory="512MB",  # Default memory
+            disk="4GiB",  # Default disk
+            config={
+                "user.lab": self.config["name"],
+                "user.managed-by": "labkit"
+            }
+        )
 
-        actions = []
+        actions = self.action_builder.build_add_node_actions(node_spec, dry_run=dry_run)
 
-        # 1. Create container
-        actions.append({
-            "desc": f"Create container '{container_name}' from '{effective_template}'",
-            "func": run,
-            "args": (["incus", "copy", effective_template, container_name],),
-            "kwargs": {"check": True}
-        })
-
-        # 1a. Unset the 'user.template' field
-        actions.append({
-            "desc": f"Unset 'user.template' field on '{container_name}'",
-            "func": run,
-            "args": (["incus", "config", "unset", container_name, "user.template"],),
-            "kwargs": {"check": True}
-        })
-
-        # 1b. Unset the 'environment.firstboot.done' field
-        actions.append({
-            "desc": f"Unset the 'environment.firstboot.done' field on '{container_name}'",
-            "func": run,
-            "args": (["incus", "config", "unset", container_name, "environment.firstboot.done"],),
-            "kwargs": {"check": True}
-        })
-
-        # 2. Create node directory
-        actions.append({
-            "desc": f"Create directory {node_dir}",
-            "func": lambda path: path.mkdir(exist_ok=True),
-            "args": (node_dir,)
-        })
-
-        # 3. Write manifest.yaml
-        def write_manifest():
-            (node_dir / "manifest.yaml").write_text(f"""name: {name}
-    purpose: >-
-    Replace with short description
-    role: unknown
-    tags: []
-    environment: development
-    owner: {self.config['user']}
-    lifecycle: experimental
-    created_via: labkit node add
-    dependencies: []
-    notes: |
-    Add usage notes, gotchas, maintenance tips here.
-    """)
-
-        actions.append({
-            "desc": f"Generate {node_dir}/manifest.yaml",
-            "func": write_manifest
-        })
-
-        # 4. Write README.md
-        def write_readme():
-            (node_dir / "README.md").write_text(
-                f"# {name}\n\n> Update this with purpose and usage\n")
-
-        actions.append({
-            "desc": f"Generate {node_dir}/README.md",
-            "func": write_readme
-        })
-
-        # 5. Mount node dir
-        actions.append({
-            "desc": f"Mount {node_dir} → {name}:{mount_point}",
-            "func": run,
-            "args": ([
-                "incus", "config", "device", "add",
-                container_name, "lab-node", "disk", "shift=true",
-                f"path={mount_point}",
-                f"source={node_dir}"
-            ],),
-            "kwargs": {"check": True}
-        })
-
-        # 6. Mount shared storage (if enabled)
-        if self.config["shared_storage"].get("enabled", True):
-            actions.append({
-                "desc": f"Mount {self.shared_dir} → {name}:{shared_mp}",
-                "func": run,
-                "args": ([
-                    "incus", "config", "device", "add",
-                    container_name, "lab-shared", "disk", "shift=true",
-                    f"path={shared_mp}",
-                    f"source={self.shared_dir}"
-                ],),
-                "kwargs": {"check": True}
-            })
-
-        # 7. Set labels
-        actions.append({
-            "desc": f"Set labels on {container_name}",
-            "func": run,
-            "args": ([
-                "incus", "config", "set", container_name,
-                f"user.lab={self.config['name']}",
-                "user.managed-by=labkit"
-            ],),
-            "kwargs": {"check": True}
-        })
-
-        # 8. Git commit
-        def git_commit():
-            subprocess.run(["git", "add", "."], cwd=self.root, check=False)
-            env = os.environ.copy()
-            env.setdefault("GIT_AUTHOR_NAME", "labkit")
-            env.setdefault("GIT_COMMITTER_NAME", "labkit")
-            env.setdefault("GIT_AUTHOR_EMAIL", "labkit@localhost")
-            env.setdefault("GIT_COMMITTER_EMAIL", "labkit@localhost")
-            subprocess.run([
-                "git", "commit", "-m", f"labkit: added node {name}"
-            ], cwd=self.root, env=env, check=False)  # ignore no-changes
-
-        actions.append({
-            "desc": "Commit node metadata to Git",
-            "func": git_commit
-        })
-
-        # Execute plan
-        self._describe_and_apply(actions, dry_run)
+        # Execute the plan using the action executor
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def remove_node(self, name: str, force: bool = False, dry_run: bool = False):
         """
         remove_node: removes a node from the lab
         """
-        container_name = f"{self.config['name']}-{name}"
-        state = self.get_container_state(container_name)
+        state = self.backend.get_state(name)
         if not state:
-            warning(f"Container '{container_name}' not found")
+            warning(f"Node '{name}' not found")
             return
 
         if state == "Running" and not force:
-            warning(f"'{container_name}' is running. Use --force to stop and delete.")
+            warning(f"'{name}' is running. Use --force to stop and delete.")
             return
 
         actions = []
 
-        # 1. Stop container
+        # 1. Stop node
         if state == "Running":
             actions.append({
-                "desc": f"Stop container: {container_name}",
-                "func": run,
-                "args": (["incus", "stop", container_name],),
-                "kwargs": {"check": True}
+                "desc": f"Stop node: {name}",
+                "func": self.backend.stop,
+                "args": (name,),
+                "kwargs": {}
             })
 
-        # 2. Delete container
+        # 2. Delete node
         actions.append({
-            "desc": f"Delete container: {container_name}",
-            "func": run,
-            "args": (["incus", "delete", container_name],),
-            "kwargs": {"check": True}
+            "desc": f"Delete node: {name}",
+            "func": self.backend.remove,
+            "args": (name,),
+            "kwargs": {}
         })
 
         # Note: We don't delete nodes/<name>/ — keep docs/history
@@ -574,8 +504,11 @@ class Lab:
             "func": git_commit
         })
 
-        # Execute plan
-        self._describe_and_apply(actions, dry_run)
+        # Build actions using the action builder
+        actions = self.action_builder.build_remove_node_actions(name, force=force, dry_run=dry_run)
+
+        # Execute the plan using the action executor
+        return self.action_executor.execute_actions(actions, dry_run=dry_run)
 
     def get_node_count(self):
         """
@@ -601,22 +534,12 @@ class Lab:
             yaml.dump(data, indent=2, default_flow_style=False)
         )
 
-    def get_container_state(self, container_name: str) -> str | None:
+    def get_node_state(self, node_name: str) -> str | None:
         """
-        get_container_state: return container status: 'Running', 'Stopped', 
+        get_node_state: return node status: 'Running', 'Stopped',
         or None if not found
         """
-        result = run(["incus", "list", container_name, "--format=json"], silent=True, check=False)
-        if result.returncode != 0:
-            return None
-        try:
-            data = json.loads(result.stdout)
-            for c in data:
-                if c["name"] == container_name:
-                    return c["status"]
-            return None
-        except Exception as e:
-            raise RuntimeError(f"Failed to get container state: {e}") from e
+        return self.backend.get_state(node_name)
 
 def list_templates():
     """

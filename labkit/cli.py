@@ -131,16 +131,40 @@ def prepare_cmd_init(subparsers):
     init_p = subparsers.add_parser("init",
     help="Initialize current directory as a lab")
     init_p.add_argument("--name", type=str, help="Lab name")
-    init_p.add_argument("--template", help="Set default node template")
+    init_p.add_argument("--template", help="Set default container template")
+    init_p.add_argument("--vm-template", help="Set default VM template")
+    init_p.add_argument("--backend", help="Backend to use (incus, docker, qemu)", default="incus")
     init_p.add_argument("--allow-scattered", action="store_true",
                         help="Allow lab creation outside default labs root")
+    init_p.add_argument("--config-source", choices=["global", "project", "env", "dotenv", "defaults"],
+                        help="Specify which configuration source to use (default: follows priority order)")
 
 def cmd_init(args, check_passed=False):
     """
     cmd_init: handles 'init' command
     """
     current_dir = Path.cwd()
-    config = LabkitConfig().load()
+
+    # Check if a specific config source was requested
+    config = LabkitConfig()
+    if hasattr(args, 'config_source') and args.config_source:
+        from labkit.config_manager import ConfigSource
+
+        # Map string to enum
+        source_map = {
+            "global": ConfigSource.GLOBAL_CONFIG,
+            "project": ConfigSource.PROJECT_CONFIG,
+            "env": ConfigSource.ENVIRONMENT,
+            "dotenv": ConfigSource.DOTENV,
+            "defaults": ConfigSource.DEFAULTS
+        }
+
+        if args.config_source in source_map:
+            config.load_from_source(source_map[args.config_source])
+        else:
+            config.load()  # Default behavior
+    else:
+        config.load()  # Default behavior
 
     if (current_dir / "lab.yaml").exists():
         warning("This directory is already a lab (lab.yaml exists). Skipping init.")
@@ -164,20 +188,36 @@ def cmd_init(args, check_passed=False):
     # Initialize lab structure
     lab = Lab.init(current_dir)
     lab.config["name"] = lab_name
+
+    # Set templates based on args or global config defaults
     if hasattr(args, "template") and args.template:
         if not container_exists(args.template):
             warning(f"Template '{args.template}' not found. You may need to create it.")
         lab.config["template"] = args.template
+    else:
+        # Use global default template if not specified
+        lab.config["template"] = config.data.get("default_template", "golden-image")
+
+    # Set VM template from args or global config
+    if hasattr(args, "vm_template") and args.vm_template:
+        lab.config["vm_template"] = args.vm_template
+    else:
+        lab.config["vm_template"] = config.data.get("default_vm_template", "golden-vm")
+
+    # Determine backend (default to incus)
+    backend = getattr(args, "backend", "incus")
 
     # Save updated config
     (current_dir / "lab.yaml").write_text(
         f"name: {lab_name}\n"
         f"template: {lab.config['template']}\n"
+        f"vm_template: {lab.config['vm_template']}\n"  # Add VM template to config
+        f"backend: {backend}\n"  # Add backend to config
         f"user: {lab.config['user']}\n"
         "managed_by: labkit\n"
     )
 
-    success(f"Initialized empty lab '{lab_name}'")
+    success(f"Initialized empty lab '{lab_name}' with {backend} backend")
 
 def prepare_cmd_node(subparsers):
     """
@@ -188,6 +228,8 @@ def prepare_cmd_node(subparsers):
     add_node_p = node_sub.add_parser("add", help="Add a new node")
     add_node_p.add_argument("name", help="Node/container name")
     add_node_p.add_argument("--template", help="Use specific template (overrides lab.yaml)")
+    add_node_p.add_argument("--node-type", help="Type of node (container, vm, oci)",
+                           choices=["container", "vm", "oci"], default="container")
 
     rm_node_p = node_sub.add_parser("rm", aliases=['del', 'remove', 'delete'],
                                     help="Remove a node")
@@ -211,15 +253,31 @@ def cmd_node(args):
         error("This is not a lab directory. Run 'labkit init' first.")
         return
 
+    # Load lab config to get backend
+    import yaml
+    from labkit.models import NodeType
+
+    lab_config = yaml.safe_load((current_dir / "lab.yaml").read_text()) or {}
+    backend = lab_config.get("backend", "incus")
+
     try:
-        lab = Lab(current_dir)
+        lab = Lab(current_dir, backend=backend)
     except RuntimeError as e:
         fatal(f"Failed to load lab: {e}")
         return
 
     if args.action == "add":
         try:
-            lab.add_node(args.name, template=args.template, dry_run=args.dry_run)
+            # Convert node type string to NodeType enum
+            from labkit.models import NodeType
+            node_type_map = {
+                "container": NodeType.CONTAINER,
+                "vm": NodeType.VM,
+                "oci": NodeType.OCI
+            }
+            node_type = node_type_map.get(args.node_type, NodeType.CONTAINER)
+
+            lab.add_node(args.name, template=args.template, node_type=node_type, dry_run=args.dry_run)
         except RuntimeError as e:
             error(f"Failed to add node: {e}")
     elif args.action in ["rm", "remove", "del", "delete"]:
@@ -240,7 +298,12 @@ def prepare_cmd_list(subparsers):
                         help="Only show labs with at least one local node running")
 
 def _process_root(root, labs, container_map, seen_paths):
-    parent_dir = [entry.path for entry in os.scandir(root) if entry.is_dir()]
+    try:
+        parent_dir = [entry.path for entry in os.scandir(root) if entry.is_dir()]
+    except PermissionError:
+        # Skip directories we don't have permission to scan
+        return
+
     for p in parent_dir:
         p = Path(p)
         if not p.is_dir() or p in seen_paths:
@@ -249,22 +312,33 @@ def _process_root(root, labs, container_map, seen_paths):
         seen_paths.add(p)
         lab_yaml = p / "lab.yaml"
 
-        if not lab_yaml.exists():
-            continue
-
         try:
-            data = yaml.safe_load(lab_yaml.read_text()) or {}
+            # Check if the lab.yaml file exists
+            if not lab_yaml.exists():
+                continue
+
+            # Try to read the file and get its stats, handling permission errors
+            try:
+                data = yaml.safe_load(lab_yaml.read_text()) or {}
+                mtime = lab_yaml.stat().st_mtime
+            except PermissionError:
+                # Skip this directory if we don't have permission to read the file
+                continue
+
             lab_name = data.get("name") or p.name
             template = data.get("template", "unknown")
-            mtime = lab_yaml.stat().st_mtime
 
             # Get local node names (from nodes/ subdirs)
             nodes_dir = p / "nodes"
             local_node_names = []
             if nodes_dir.exists():
-                local_node_names = [
-                    f"{lab_name}-{d.name}" for d in nodes_dir.iterdir() if d.is_dir()
-                ]
+                try:
+                    local_node_names = [
+                        f"{lab_name}-{d.name}" for d in nodes_dir.iterdir() if d.is_dir()
+                    ]
+                except PermissionError:
+                    # Skip if we can't read the nodes directory
+                    local_node_names = []
 
             # Count how many are running
             running_count = sum(
@@ -283,7 +357,12 @@ def _process_root(root, labs, container_map, seen_paths):
                 "has_running": has_running,
             })
         except Exception as e:
-            warning(f"Failed to read {p}: {e}")
+            # Handle any other exceptions, including permission errors
+            if isinstance(e, PermissionError):
+                # Skip directories we don't have permission to access
+                continue
+            else:
+                warning(f"Failed to read {p}: {e}")
 
 def cmd_list(args):
     """
@@ -468,8 +547,13 @@ def cmd_up(args):
         fatal("This is not a lab directory. Run 'labkit init' first.")
         return
 
+    # Load lab config to get backend
+    import yaml
+    lab_config = yaml.safe_load((current_dir / "lab.yaml").read_text()) or {}
+    backend = lab_config.get("backend", "incus")
+
     try:
-        lab = Lab(current_dir)
+        lab = Lab(current_dir, backend=backend)
     except RuntimeError as e:
         error(f"Failed to load lab: {e}")
         return
@@ -513,8 +597,13 @@ def cmd_down(args):
         fatal("This is not a lab directory. Run 'labkit init' first.")
         return
 
+    # Load lab config to get backend
+    import yaml
+    lab_config = yaml.safe_load((current_dir / "lab.yaml").read_text()) or {}
+    backend = lab_config.get("backend", "incus")
+
     try:
-        lab = Lab(current_dir)
+        lab = Lab(current_dir, backend=backend)
     except RuntimeError as e:
         error(f"Failed to load lab: {e}")
         return

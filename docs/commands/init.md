@@ -8,11 +8,12 @@ Initialize a new lab in the current directory.
 labkit init [flags]
 ```
  
-### Flags 
+### Flags
 | flag | default | description |
 | --- | --- | --- |
 | `--name <name>` | Directory name | Set custom lab name (used in lab.yaml) |
-| `--template <name>` | `golden-base` | Use a specific container template instead of the default |
+| `--template <name>` | `golden-base` | Use a specific template instead of the default |
+| `--backend <backend>` | `incus` | Backend to use (incus, docker, qemu) |
 | `--allow-scattered` | `false` | Allow creation outside default root; auto-add parent path to global config |
 |
 

@@ -1,32 +1,34 @@
 ![Pylint](https://img.shields.io/badge/pylint-9.79/10-brightgreen)
 # labkit
 
-> Lightweight homelab management for Incus containers (Linux-only)
+> Lightweight homelab management for containers and VMs (Linux-only)
 
-`labkit` helps you organize container-based development labs with **built-in documentation**, **dependency tracking**, and **safe automation** — all version-controlled via Git.
+`labkit` helps you organize container and VM-based development labs with **built-in documentation**, **dependency tracking**, and **safe automation** — all version-controlled via Git.
 
 Think of it as a **developer-first environment orchestrator**: simple to use, easy to adopt, and designed for clarity without enforcement.
 
 ## Breaking Changes
 
-As this release now supports container namespace, it will have incompatibility issues with labs that was created using earlier versions. However, we will `migrate` subcommand to detect and migrate existing labs to use namespace.
+As this release now supports container namespace and multiple backends, it will have incompatibility issues with labs that was created using earlier versions. However, we will `migrate` subcommand to detect and migrate existing labs to use namespace.
 
 ---
 
 ## Features
 
 - `labkit new <project>`: Create and enter a new lab
-- `labkit init`: Initialize current directory as a lab
-- `labkit node add/remove`: Manage containers in your lab
+- `labkit init`: Initialize current directory as a lab with backend selection
+- `labkit node add/remove`: Manage containers and VMs in your lab
+- Multi-backend support: Incus, Docker, QEMU and more
+- Incus supports both containers and VMs in the same backend
 - Self-documenting: Each node gets `manifest.yaml`, `README.md`
-- Docs live inside container at `/lab/node`
+- Docs live inside container/VM at `/lab/node`
 - Shared storage per lab: `./shared/`
 - Declare dependencies: `labkit requires add tile-server`
 - Bidirectional tracking: Labs → infra, infra ← who uses me?
-- Safe cleanup: Stop only non-pinned, unrelated containers
+- Safe cleanup: Stop only non-pinned, unrelated containers/VMs
 - No enforcement — just smart conventions
 
-Built for developers, homelab admins, and anyone managing multiple Incus environments.
+Built for developers, homelab admins, and anyone managing multiple container and VM environments.
 
 ---
 
@@ -36,12 +38,18 @@ Built for developers, homelab admins, and anyone managing multiple Incus environ
 # Install labkit
 uv install -e .
 
-# Create a new lab
+# Create a new lab with default Incus backend
 labkit new myapp-dev
 
-# Add nodes (clones from golden-base by default)
+# Or initialize with a specific backend (incus, docker, qemu)
+labkit init --backend incus
+
+# Add nodes (containers by default)
 labkit node add web01
 labkit node add db01 --template golden-postgres
+
+# Add VM nodes (when using Incus backend)
+labkit node add vm01 --node-type vm
 
 # Declare dependency on shared infrastructure
 labkit requires add tile-server nexus-cache
@@ -104,9 +112,9 @@ Perfect for auditing or preventing accidental shutdowns.
 | Command | Purpose |
 |--------|--------|
 | `labkit new <name>` | Create + enter + init a new lab |
-| `labkit init` | Initialize current dir as a lab |
-| `labkit node add <name>` | Create container + mount docs |
-| `labkit node remove <name>` | Delete container (keeps docs) |
+| `labkit init` | Initialize current dir as a lab (with optional backend selection) |
+| `labkit node add <name>` | Create container/VM + mount docs |
+| `labkit node remove <name>` | Delete container/VM (keeps docs) |
 | `labkit requires add <node>` | Declare dependency on shared node |
 | `labkit requires remove <node>` | Remove requirement |
 | `labkit requires list` | Show current required nodes |
@@ -116,7 +124,7 @@ Perfect for auditing or preventing accidental shutdowns.
 | `labkit down --suspend-required` | Also stop required nodes if no other lab uses them |
 | `labkit down --force-stop-all` | Stop everything, even pinned nodes |
 | `labkit list` | Find all labs in `~/workspace/labs` |
-| `labkit audit` | Scan containers: stray, pinned, lab-affiliated |
+| `labkit audit` | Scan containers/VMs: stray, pinned, lab-affiliated |
 | `labkit * --dry-run` | Preview changes without applying (supported by `up`, `down`, `node add/remove`, `requires add/remove`) |
 
 ## Lifecycle Management
@@ -207,26 +215,36 @@ When you add a node:
 
 Tip: Update the skeleton to reflect reality — it helps everyone (including future-you). 
 
-## Requirements 
+## Requirements
 - Linux (Ubuntu/Debian/Fedora/etc.)
 - Python 3.10+
-- uv 
-- incus CLI installed and working
-- A golden base container (e.g., golden-base)
+- uv
+- Backend-specific requirements:
+  - **Incus backend** (default): `incus` CLI installed and working, base images
+  - **Docker backend**: `docker` CLI installed and running
+  - **QEMU backend**: `qemu-system-x86_64`, `qemu-img`, KVM support
 - Set via `lab.yaml` or --template
 
-## Configuration 
-Edit `lab.yaml` to customize: 
+## Configuration
+Edit `lab.yaml` to customize:
 ```yaml
 name: myapp-dev
 template: golden-base
+backend: incus  # Options: incus, docker, qemu
 requires_nodes:
   - tile-server
   - tile38-server
 ```
 Or override during commands:
 ```shell
-labkit node add api01 --template golden-api
+# Initialize with specific backend
+labkit init --backend docker
+
+# Add VM nodes (when using Incus backend)
+labkit node add vm01 --node-type vm
+
+# Add container nodes with specific template
+labkit node add api01 --template alpine:latest
 ```
 
 ## Future Plan (not ordered)

@@ -1,0 +1,39 @@
+name: firstboot-handler
+version: 1.0.0
+type: hook
+author: LabKit Team
+description: Firstboot handler for LabKit container and VM setup
+entry_point: plugin.py
+dependencies:
+  - incus
+config_schema:
+  timeout:
+    type: integer
+    default: 30
+  supported_distros:
+    type: array
+    items:
+      type: string
+    default: ["alpine", "ubuntu", "debian", "centos", "rocky", "fedora", "arch"]
+  regenerate_ssh_keys:
+    type: boolean
+    default: true
+  set_hostname:
+    type: boolean
+    default: true
+  mark_completed:
+    type: boolean
+    default: true
+default_config:
+  timeout: 30
+  supported_distros:
+    - "alpine"
+    - "ubuntu"
+    - "debian"
+    - "centos"
+    - "rocky"
+    - "fedora"
+    - "arch"
+  regenerate_ssh_keys: true
+  set_hostname: true
+  mark_completed: true

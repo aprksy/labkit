@@ -1,0 +1,54 @@
+# LabKit Main Application Configuration
+# Place this file at ~/.config/labkit/config.yaml
+
+# Default root directory for labs
+default_root: "/home/aprksy/workspace/labs"
+
+# Search paths for discovering labs (can include glob patterns)
+search_paths:
+  - "/home/aprksy/workspace/labs"
+  - "/home/aprksy/projects/*"  # Discover labs in project subdirectories
+
+# Default container template (for Incus backend)
+default_template: "golden-arch"
+
+# Default VM template (for Incus backend)
+default_vm_template: "golden-vm"
+
+# Default user
+user: "aprksy"
+
+# Default backend (incus, docker, qemu)
+default_backend: "incus"
+
+# Network mode for new labs
+default_network_mode: "shared"
+
+# Shared storage settings
+shared_storage:
+  enabled: true
+  mount_point: "/lab/shared"
+
+# Node mount settings
+node_mount:
+  source_dir: "nodes"
+  mount_point: "/lab/node"
+  readonly: false
+
+# Additional main app settings
+settings:
+  # Auto-start nodes on system boot
+  auto_start: false
+  
+  # Environment type
+  environment: "development"
+  
+  # Labels to apply to all nodes
+  labels:
+    managed_by: "labkit"
+  
+  # Resource limits
+  resource_limits:
+    cpu: 4
+    memory: "8GB"
+    disk: "100GB"

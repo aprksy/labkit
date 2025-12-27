@@ -1,0 +1,35 @@
+#!/sbin/openrc-run
+
+name="incuslab-event-listener"
+desc="LabKit Incus Event Automation Service"
+command="/bin/sh"
+command_args="-c 'exec /usr/bin/incus monitor --type=lifecycle --format=json | /home/aprksy/workspace/homelabs/incus/labkit/.venv/bin/python3 /home/aprksy/workspace/homelabs/incus/labkit/plugins/incus-event-listener-plugin/process_events.py'"
+command_background="yes"
+
+# Set environment
+export PATH="/home/aprksy/workspace/homelabs/incus/labkit/.venv/bin:/usr/local/bin:/usr/bin"
+
+# Set user and group
+user="aprksy"
+group="aprksy"
+
+# Dependencies
+depend() {
+    need incus
+    after incus
+}
+
+# Check if incus is running before starting
+start_pre() {
+    if ! service incus status >/dev/null 2>&1; then
+        eerror "Incus service is not running"
+        return 1
+    fi
+}
+
+# Optional: Set working directory if needed
+# working_dir="/home/aprksy/workspace/homelabs/incus/labkit"
+
+# Set process name for easier identification
+: ${incuslab_event_listener_pidfile:="/var/run/incuslab-event-listener.pid"}
+pidfile="${incuslab_event_listener_pidfile}"

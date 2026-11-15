@@ -3,6 +3,8 @@
 
 > Lightweight homelab management for containers and VMs (Linux-only)
 
+> Operating rules: [`GOVERNANCE.md`](GOVERNANCE.md) — read it before changing anything.
+
 `labkit` helps you organize container and VM-based development labs with **built-in documentation**, **dependency tracking**, and **safe automation** — all version-controlled via Git.
 
 Think of it as a **developer-first environment orchestrator**: simple to use, easy to adopt, and designed for clarity without enforcement.

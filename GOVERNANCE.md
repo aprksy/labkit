@@ -184,3 +184,129 @@ Run these before opening a PR; paste the result in the body.
 5. Keep `docs/commands/` and `CONFIG_FIELDS.md` in sync with code in the same PR.
 6. Do not rewrite history on `dev` or `master` (no force-push, no rebase of published commits).
 7. Do not add a dependency without a reason in the PR body.
+
+## Agent handoff
+
+**This section is identical in every repository of the fleet.** It exists because
+work moves between agents — **Hermes**, **opencode** (and any agent added later) —
+and between machines, often mid-task. Read it before you touch anything; update it
+before you hand off.
+
+### 1. Declare who you are
+
+State your agent name in the first line of every PR body, issue comment and
+handoff note:
+
+```
+Agent: hermes            # or: opencode
+Host:  ocisrv            # the machine you actually ran on
+```
+
+Never sign work with a name you did not run under. "Verified on `sxi-work`" is
+actionable; "verified locally" is not.
+
+### 2. Never leave work invisible
+
+Work an agent cannot see does not exist. Before you stop:
+
+- **Push** every branch you created. An unpushed branch is invisible to the next
+  agent and to every other machine.
+- **Open a PR** for anything that is not a throwaway experiment, even if it is
+  incomplete — mark it `Draft:` and say what is missing.
+- **Record blocked work** as a `blocked` issue, or as a task in the PR body. A
+  half-finished lane with no issue is the most expensive thing you can leave
+  behind.
+- **Never commit to `main`.** `dev` is the integration branch; feature work lands
+  there first.
+
+### 3. The four questions every handoff must answer
+
+Write these in the PR body, or in `.specify/memory/current-state.md` when the work
+is not PR-shaped yet:
+
+1. **What changed** — files and behaviour, not intent.
+2. **How it was verified** — the actual command and its real result. Never
+   "should work". Never invented output.
+3. **What is still pending** — the next concrete step, and who or what is
+   blocked on it.
+4. **What you could not do** — stated plainly. An unfinished task named honestly
+   is worth more than a green claim nobody checked.
+
+### 4. Current state (verified snapshot)
+
+Refresh this table whenever you change a repo's state, and at minimum in the same
+PR that changes it. A stale snapshot is worse than none — it sends the next agent
+down a path that no longer exists.
+
+```
+repo             branch                        dirty  ahead  last commit
+aptimetric       issue-32-item-manifest        1      0      5c12191
+axiomflow        chore/bump-knitknot-v0.4.0    0      0      6d87e07
+clichse          dev                           0      0      78c6e721
+knitgen          chore/knitknot-v040-sync      0      0      b7b0edd
+knitknot         (detached HEAD)               0      n/a    6876c45
+kronika          chore/bump-knitknot-v0.4.0    0      0      08149c6
+labkit           dev                           0      0      52b9565
+llm-gateway      main                          0      0      64247a0
+naughty-kittens  dev                           0      0      8b6de39
+petricore        dev                           0      0      085b7bf
+siem-lite        dev                           0      2      4090e9a
+ultramech        dev                           41     0      43175d5
+```
+
+Re-measure rather than trusting the table:
+
+```bash
+for d in ~/homelabs/dev/*/; do [ -d "$d/.git" ] || continue
+  cd "$d"; printf "%-17s %-30s dirty=%-3s ahead=%-4s %s\n" \
+    "$(basename "$d")" "$(git branch --show-current)" \
+    "$(git status --porcelain | wc -l)" \
+    "$(git rev-list --count @{u}..HEAD 2>/dev/null || echo n/a)" \
+    "$(git log -1 --format=%h)"
+done
+```
+
+`ahead=n/a` means the branch has no upstream — it was never pushed.
+
+### 5. Pending work
+
+Only what is genuinely in flight. Delete rows as they land; never leave a row
+behind that has already shipped.
+
+- **siem-lite** — `dev` is 2 commits ahead of `origin/dev`, unpushed. Push before
+  anyone else touches it.
+- **ultramech** — 41 untracked files, all Godot `.uid` sidecars. Decide once
+  whether `.uid` files are committed or ignored, then apply it fleet-wide.
+- **aptimetric** — `uv.lock` modified and uncommitted on `issue-32-item-manifest`.
+- **knitknot** — detached HEAD at `6876c45`. Attach to a branch before working.
+
+### 6. Switching agents mid-task
+
+- **Read `git status`, `git log -1` and the open PRs before your first edit.** The
+  previous agent may have left work you cannot see in a branch.
+- **Do not re-do finished work.** Check the PR list and the snapshot above first.
+- **Do not force-push or rebase a shared branch** (`main`, `dev`) to tidy up
+  someone else's commits.
+- **Continue the same branch and PR** rather than opening a parallel one for the
+  same concern. Two PRs on one concern is a merge conflict with extra steps.
+- **Commit identity is the repo's, not the agent's.** Never change `user.name` or
+  `user.email`; attribution goes in the PR body, not the author field.
+
+### 7. Machine access when you take over
+
+Clones live on `ocisrv` and `sxi-work`. `ocimain` is the WireGuard hub and holds
+no clones. If you cannot reach a host, say so instead of working around it — a
+silent fallback to a different machine produces work verified somewhere the owner
+did not expect.
+
+### 8. Definition of done, for a handoff
+
+A task is handoff-ready when all of these hold:
+
+- `make check` passes, and its real output is in the PR body.
+- The branch is pushed and a PR is open (or a `blocked` issue is filed).
+- Section 3's four questions are answered.
+- Section 4's snapshot and Section 5's pending list are updated.
+- Nothing is left uncommitted that the next agent would need.
+
+<!-- fleet-handoff:v1 -->
